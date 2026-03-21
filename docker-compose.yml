@@ -1,0 +1,50 @@
+
+
+services:
+
+  # ─── Batfish network analysis platform ────────────────────────────────────
+  batfish:
+    image: batfish/allinone:latest
+    container_name: nl2fw-batfish
+    ports:
+      - "9996:9996"   # pybatfish gRPC
+      - "9997:9997"   # Batfish UI (optional)
+    volumes:
+      - batfish_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9997/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─── NL2Firewall backend API ───────────────────────────────────────────────
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: nl2fw-api
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - BATFISH_HOST=batfish
+      - BATFISH_PORT=9996
+      - BATFISH_NETWORK=nl2firewall
+      - LOG_LEVEL=INFO
+      - DEBUG=false
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      batfish:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  batfish_data:
