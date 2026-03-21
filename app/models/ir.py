@@ -205,6 +205,7 @@ class CanonicalRule(BaseModel):
     logging      : bool        = Field(False, description="Log matched packets")
     confidence   : float       = Field(1.0, ge=0.0, le=1.0)
     ambiguities  : list[str]   = Field(default_factory=list)
+    incomplete   : bool        = Field(False, description="True when any entity is Not Found or confidence < 0.5")
 
     # ── Validators ────────────────────────────────────────────────────────────
     @model_validator(mode="after")

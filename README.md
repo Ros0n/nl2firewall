@@ -205,41 +205,6 @@ Response:
 }
 ```
 
----
-
-## Example Intents
-
-These all work against the CCNA lab topology:
-
-```
-# CCNA Lab Policy 1
-"Block SSH from Sales to Management"
-
-# CCNA Lab Policy 2
-"Sales should not access HTTP or HTTPS on the Management network or any R1 interfaces"
-
-# CCNA Lab Policy 3
-"Stop Sales from pinging the Operations and Management networks"
-
-# CCNA Lab Policy 4
-"Operations cannot send ICMP echo requests to the Sales network"
-
-# Multi-port enumeration
-"Deny all web traffic from Sales to Management"
-→ generates 2 rules (HTTP port 80 + HTTPS port 443)
-
-# Multiple destinations
-"Block Sales from SSHing or using the web on both Management and Operations"
-→ generates 6 rules (1 src × 2 dst × 3 ports)
-
-# Protect intent (Xumi §5.2)
-"Protect the HTTPS flow from Sales to the Internet"
-→ generates permit rule for Sales→Internet:443 (placed above deny rules)
-
-# Host-specific
-"Block PC-B from SSHing to R2"
-→ uses host 10.40.0.10 syntax for /32 source
-```
 
 ---
 
@@ -286,22 +251,3 @@ nl2firewall/
 
 ---
 
-## Research Papers Implemented
-
-| Feature | From |
-|---------|------|
-| SNMT entity-to-prefix grounding | Xumi §4.1 |
-| CoT + Self-Reflection prompting | Xumi §4.2 |
-| Human feedback loop (iterative refinement) | Xumi §4.3 |
-| IR enumeration (src × dst × port) | Xumi §4.4 |
-| Protect intents (anti-action rules) | Xumi §5.2 |
-| Two-agent pipeline (Resolver + IR Builder) | NYU §II.A |
-| Safety Gate (hard blocker) | NYU §II.C |
-| Structural linter (advisory) | NYU §II.C |
-| Batfish verification layer | NYU §II.C |
-| Schema-bound JSON output | NYU §II.B |
-
-**Not implemented (out of scope for this topology):**
-- TMF bitarray conflict detection — Xumi §5.1 (designed for 1000+ rule networks)
-- Deployment optimization (EIS/ILP) — Xumi §6 (trivial for 3-VLAN topology)
-- Multi-vendor compiler — NYU future work (Cisco only)

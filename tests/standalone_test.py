@@ -254,10 +254,7 @@ def compile_rule(rule: CanonicalRule) -> CompiledACL:
                         dst_port=dst_port_num, seq=seq))
                     seq += 10
 
-    lines.append(CompiledLine(
-        text="deny ip any any", source_entity="any", destination_entity="any",
-        source_prefix="0.0.0.0/0", destination_prefix="0.0.0.0/0",
-        action="deny", protocol="ip", dst_port=None, seq=seq))
+    # No catch-all — operator's existing config handles other traffic
     return CompiledACL(acl_name=acl_name, interface=iface, router=router,
                        direction=dir_str, lines=lines,
                        interface_command=f"ip access-group {acl_name} {dir_str}",
@@ -518,16 +515,17 @@ class Runner:
         deny = [l for l in c.lines if "deny" in l.text and "any any" not in l.text]
         assert len(deny) == 1  # REJECT → deny on Cisco IOS
 
-    def test_compile_deny_ip_any_any_always_last(self):
+    def test_compile_no_catch_all_generated(self):
         r = self._rule()
         c = compile_rule(r)
-        assert c.lines[-1].text == "deny ip any any"
+        # No catch-all added — only the specific deny rule is generated
+        assert not any("any any" in l.text for l in c.lines)
 
     def test_compile_sequence_numbers(self):
         r = self._rule(dst_ports=[PortSpec(PortOperator.EQ,22), PortSpec(PortOperator.EQ,80)])
         c = compile_rule(r)
         seqs = [l.seq for l in c.lines]
-        assert seqs == [10, 20, 30]  # 2 deny + 1 implicit deny ip any any
+        assert seqs == [10, 20]  # 2 deny lines, no catch-all
 
     def test_compile_permit_rule(self):
         r = self._rule(action=Action.PERMIT)

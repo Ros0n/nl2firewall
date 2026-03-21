@@ -253,18 +253,11 @@ class CiscoIOSCompiler(BaseCompiler):
                         ))
                         seq += 10
 
-        # Always end with implicit deny documented explicitly
-        lines.append(CompiledLine(
-            text="deny ip any any",
-            source_entity="any",
-            destination_entity="any",
-            source_prefix="0.0.0.0/0",
-            destination_prefix="0.0.0.0/0",
-            action="deny",
-            protocol="ip",
-            dst_port=None,
-            sequence_number=seq,
-        ))
+        # No catch-all added.
+        # We generate rules only for what the intent specifies.
+        # The operator's existing ACL or router config handles all other traffic.
+        # Adding permit/deny ip any any here would be making a policy decision
+        # that belongs to the operator, not to us.
 
         logger.info(
             f"Compiled '{rule.rule_name}': {len(lines)} line(s) → "

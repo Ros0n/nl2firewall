@@ -80,6 +80,7 @@ async def resolve_intent(state: PipelineState) -> dict:
             original_intent=state.intent_text,
             wrong_ir_json=state.resolved_rule.model_dump_json(indent=2),
             human_feedback=state.human_feedback,
+            snmt_block=snmt.to_prompt_block(),
         )
     else:
         user_message = (
