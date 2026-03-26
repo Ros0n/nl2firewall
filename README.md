@@ -1,96 +1,6 @@
 # NL2Firewall — Natural Language to Cisco ACL
 
-Translates natural language network security intents into correct, deployable Cisco IOS
-extended IPv4 ACL configurations. Verified by Batfish before output.
-
-```
-"Block Sales from SSHing to Management"
-          ↓
-access-list 101 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 22
-access-list 101 permit ip any any
-
-interface GigabitEthernet0/0/1.40
- ip access-group 101 in
-```
-
----
-
-## Architecture
-
-```
-Natural Language Intent
-        │
-        ▼
-  ┌─────────────┐   SNMT (entity→prefix lookup)
-  │  Resolver   │◄──────────────────────────────
-  │   Agent     │   CoT + Self-Reflection prompts
-  └──────┬──────┘
-         │  resolved entities
-         ▼
-  ┌─────────────┐
-  │  IR Builder │   Pydantic ACL_IR validation
-  │   Agent     │   lists: sources × destinations × ports
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │   Human     │   Review IR JSON
-  │   Review    │   Approve or send feedback (loops back)
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │   Linter    │   Structural warnings (advisory)
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Safety     │   Hard block: any→any permit, low confidence, etc.
-  │   Gate      │
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Compiler   │   Enumerates IR → Cisco ACL lines
-  │  (custom)   │   src × dst × port = N lines
-  └──────┬──────┘
-         │
-         ▼
-  ┌─────────────┐
-  │  Batfish    │   Snapshot verification: parse, shadowing, reachability
-  │  Verify     │
-  └──────┬──────┘
-         │
-         ▼
-  Deployable Config + Explanation
-```
-
-**Key design decisions:**
-- No Aerleon — custom Python compiler (50 lines, fully deterministic)
-- No TMF bitarrays — Batfish handles conflict/shadowing at our scale
-- No deployment optimization — single topology, clear interface placement
-- LLM = Gemini 2.0 Flash (free tier); structured JSON output only
-- Pipeline = LangGraph state machine with human-in-the-loop interrupt
-
----
-
-## SNMT (Semantics-Network Mapping Table)
-
-The SNMT is the critical grounding table from Xumi §4.1. It maps entity names
-to concrete IP prefixes and gateway interfaces so the LLM never has to guess:
-
-| Entity           | Prefix          | Gateway Interface          |
-|------------------|-----------------|---------------------------|
-| Sales_Network    | 10.40.0.0/24    | R1 GigabitEthernet0/0/1.40 |
-| Operations_Network| 10.30.0.0/24   | R1 GigabitEthernet0/0/1.30 |
-| Management_Network| 10.20.0.0/24   | R1 GigabitEthernet0/0/1.20 |
-| Internet         | 172.16.1.0/24   | R1 Loopback1               |
-| PC_A             | 10.30.0.10/32   | R1 GigabitEthernet0/0/1.30 |
-| PC_B             | 10.40.0.10/32   | R1 GigabitEthernet0/0/1.40 |
-| ...              | ...             | ...                        |
-
-Aliases are handled by the LLM — "Sales", "VLAN 40", "PC-B network" all resolve
-to `Sales_Network` through the CoT reasoning steps.
+Translates natural language network security intents into correct ACL configurations. Verified by Batfish before output.
 
 ---
 
@@ -149,7 +59,7 @@ python3 tests/standalone_test.py
 ```bash
 curl -X POST http://localhost:8000/api/intents \
   -H "Content-Type: application/json" \
-  -d '{"intent": "Block SSH from the Sales network to the Management network"}'
+  -d '{"intent": "your_intent_message"}'
 ```
 
 Response:
@@ -183,7 +93,7 @@ curl -X POST http://localhost:8000/api/intents/45ec3b0a-9ea3-4e14-89f6-5c597909c
 ```bash
 curl -X POST http://localhost:8000/api/intents/45ec3b0a-9ea3-4e14-89f6-5c597909cd65/review 
   -H "Content-Type: application/json" 
-  -d '{"approve": false, "feedback": "The destination should be Management_Network not Operations_Network"}'
+  -d '{"approve": false, "feedback": "your_feedback_message"}'
 ```
 
 ### Get final config
@@ -191,20 +101,6 @@ curl -X POST http://localhost:8000/api/intents/45ec3b0a-9ea3-4e14-89f6-5c597909c
 ```bash
 curl http://localhost:8000/api/intents/abc-123/config
 ```
-
-Response:
-```json
-{
-  "intent": "Block SSH from the Sales network to the Management network",
-  "config": "access-list 101 remark Deny SSH from Sales to Management\naccess-list 101 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 22\naccess-list 101 permit ip any any\n\ninterface GigabitEthernet0/0/1.40\n ip access-group 101 in",
-  "explanation": "This ACL denies TCP port 22 (SSH) traffic originating from the Sales VLAN (10.40.0.0/24) destined for the Management VLAN (10.20.0.0/24). It is applied inbound on R1's GigabitEthernet0/0/1.40 sub-interface, which is the Sales network gateway. All other traffic from Sales is permitted by the catch-all rule.",
-  "acl_number": 101,
-  "interface": "GigabitEthernet0/0/1.40",
-  "line_count": 2,
-  "batfish_passed": true
-}
-```
-
 
 ---
 
@@ -249,5 +145,4 @@ nl2firewall/
 └── .env.example
 ```
 
----
 

@@ -245,29 +245,9 @@ STEP 4b — EXCEPTION / NEGATION LANGUAGE
   "unless", "apart from", "with the exception of"
 
   Our IR has no 'exclude' field. Handle exceptions as follows:
-
-  Case A — Exception is a DESTINATION:
-    "Block Sales from accessing all R1 interfaces EXCEPT Loopback1"
-    → The primary rule blocks the non-excepted destinations.
-    → Generate the rule for the BLOCKED destinations only (exclude the exception).
-    → Add to ambiguities[]:
-      "EXCEPTION DETECTED: Intent excludes [Loopback1] from the block.
-       The generated rule only covers the blocked destinations.
-       A separate PERMIT rule for [Loopback1] may be needed — review carefully."
-
-  Case B — Exception is a SOURCE:
-    "Block all traffic to Management EXCEPT from Operations Network"
-    → Generate the deny rule for source_is_any=true (all sources).
-    → Add to ambiguities[]:
-      "EXCEPTION DETECTED: Intent allows [Operations Network] as an exception.
-       This rule denies ALL sources. A preceding PERMIT rule for Operations Network
-       is required to implement the exception. Review rule ordering carefully."
-
-  Case C — Exception is a PROTOCOL/PORT:
-    "Block all web traffic except HTTPS"
-    → Generate deny for HTTP(80) only, not HTTPS(443).
-    → Add to ambiguities[]:
-      "EXCEPTION DETECTED: HTTPS (443) excluded from the block — only HTTP (80) denied."
+  If you find exception cases add them to the ambiguities. Find what type of exception it is source, destination, protocol
+  or others and flag to ambiguties with explanatin about what exception is.
+ 
 
   ALWAYS set confidence ≤ 0.8 when an exception is detected.
 
@@ -277,11 +257,6 @@ STEP 5 — Infer DIRECTION and DEPLOYMENT INTERFACE
   Direction meaning:
     "inbound"  = packets ENTERING an interface (arriving from outside toward router)
     "outbound" = packets LEAVING an interface (departing from router toward outside)
-
-  DEFAULT RULE (covers 90% of cases):
-    For DENY rules → place INBOUND on the SOURCE entity's gateway interface.
-    Rationale: stop traffic as early as possible, closest to the source (Cisco best practice).
-    Example: deny from Sales → inbound on GigabitEthernet0/0/1.40 (Sales gateway)
 
   DIRECTION INFERENCE from intent language:
 
@@ -427,37 +402,9 @@ CHECK 6 — incomplete flag consistency:
 
 FEW_SHOT_EXAMPLES = """
 === FEW-SHOT EXAMPLES ===
-These use a FICTIONAL network. Always use YOUR loaded network context.
+These are generic examples.Always use YOUR loaded network context.
 Never copy entity names, IPs, or interfaces from these examples.
 
-─────────────────────────────────────────────────────────
-EXAMPLE 1: Simple deny, single port (SSH)
-─────────────────────────────────────────────────────────
-Intent: "Block the Finance department from SSH access to App Servers"
-
-Step 1: "block" → action=deny
-Step 2: "Finance department" → Finance Dept in SNMT (RouterX, Ethernet1/0, 192.168.10.0/24)
-Step 3: "App Servers" → App Servers in SNMT (RouterX, Ethernet2/0, 10.0.1.0/24)
-Step 4: SSH → tcp, port 22
-Step 5: deny → inbound on source interface Ethernet1/0
-Step 4b: No exception language detected.
-Step 6: No extras.
-Step 7: confidence=1.0, no ambiguities.
-
-{
-  "rule_name": "Block_SSH_Finance_to_AppServers",
-  "description": "Deny SSH (tcp/22) from Finance Dept to App Servers",
-  "intent_text": "Block the Finance department from SSH access to App Servers",
-  "sources": [{"entity_name":"Finance Dept","router":"RouterX","interface":"Ethernet1/0","prefix":"192.168.10.0/24","zone":null}],
-  "destinations": [{"entity_name":"App Servers","router":"RouterX","interface":"Ethernet2/0","prefix":"10.0.1.0/24","zone":null}],
-  "source_is_any":false,"destination_is_any":false,
-  "protocol":"tcp","src_ports":[],
-  "dst_ports":[{"operator":"eq","port":22,"port_high":null}],
-  "action":"deny","direction":"inbound",
-  "interfaces":[{"router":"RouterX","interface":"Ethernet1/0","direction":"inbound","zone":null}],
-  "tcp_established":false,"icmp_type":null,"icmp_code":null,"time_range":null,
-  "logging":false,"confidence":1.0,"ambiguities":[],"incomplete":false
-}
 
 ─────────────────────────────────────────────────────────
 EXAMPLE 2: Multiple ports (web = HTTP + HTTPS)
@@ -484,26 +431,6 @@ Step 4: "web" = HTTP(80) + HTTPS(443) → two dst_ports entries.
   "logging":false,"confidence":1.0,"ambiguities":[],"incomplete":false
 }
 
-─────────────────────────────────────────────────────────
-EXAMPLE 3: ICMP ping — dst_ports MUST be empty
-─────────────────────────────────────────────────────────
-Intent: "Prevent Dept-B from pinging the Servers"
-
-Step 4: ping = icmp, icmp_type="echo". NEVER put a port in dst_ports for ICMP.
-
-{
-  "rule_name": "Block_Ping_DeptB_to_Servers",
-  "description": "Deny ICMP echo (ping) from Dept-B to Servers",
-  "intent_text": "Prevent Dept-B from pinging the Servers",
-  "sources": [{"entity_name":"Dept-B","router":"RouterX","interface":"Ethernet2/0","prefix":"192.168.20.0/24","zone":null}],
-  "destinations": [{"entity_name":"Servers","router":"RouterX","interface":"Ethernet3/0","prefix":"10.0.2.0/24","zone":null}],
-  "source_is_any":false,"destination_is_any":false,
-  "protocol":"icmp","src_ports":[],"dst_ports":[],
-  "action":"deny","direction":"inbound",
-  "interfaces":[{"router":"RouterX","interface":"Ethernet2/0","direction":"inbound","zone":null}],
-  "tcp_established":false,"icmp_type":"echo","icmp_code":null,"time_range":null,
-  "logging":false,"confidence":1.0,"ambiguities":[],"incomplete":false
-}
 
 ─────────────────────────────────────────────────────────
 EXAMPLE 4: Exception/negation language detected
