@@ -1,19 +1,11 @@
-# Network Context File — CCNA Extended ACL Lab
-#
-# FORMAT (Xumi-style SNMT):
-#   Each entity maps to one or more gateway+interface+prefix tuples.
-#   This is the ONLY network-specific information the LLM needs.
-#   No aliases, no ACL placement rules, no port definitions.
-#   The LLM reasons about everything else from its training knowledge.
-#
-# HOW TO USE:
-#   Upload this file via POST /api/network before submitting intents.
-#   Or place it in data/networks/ for auto-load on startup.
-
 network_name: "CCNA Extended ACL Lab"
-description: "Two-router, two-switch lab with three VLANs (Sales/Operations/Management)"
+description: "Cisco Lab 5.5.2 — Router-on-a-stick topology. R1 does inter-VLAN routing via subinterfaces on G0/0/1 connected to S1 trunk. Three VLANs: Management(20), Operations(30), Sales(40)."
 
 entities:
+
+  # ── VLAN Network Segments ────────────────────────────────────────────────────
+  # R1 is the gateway for all VLANs via subinterfaces on G0/0/1 (router-on-a-stick).
+  # ACLs are placed inbound on these subinterfaces to filter traffic at source.
 
   Sales Network:
     gateways:
@@ -33,11 +25,9 @@ entities:
         interface: "GigabitEthernet0/0/1.20"
         prefix: "10.20.0.0/24"
 
-  Internet:
-    gateways:
-      - router: "R1"
-        interface: "Loopback1"
-        prefix: "172.16.1.0/24"
+  # ── End Hosts (/32) ──────────────────────────────────────────────────────────
+  # Individual PCs. Gateway = R1 subinterface for their VLAN.
+  # PC-A is in Operations (VLAN 30), PC-B is in Sales (VLAN 40).
 
   PC-A:
     gateways:
@@ -51,32 +41,71 @@ entities:
         interface: "GigabitEthernet0/0/1.40"
         prefix: "10.40.0.10/32"
 
-  R1:
+  # ── R1 Subinterface IPs (/32) ────────────────────────────────────────────────
+  # R1 owns one IP per subinterface — these are the default gateways for each VLAN.
+  # Each is a separate entity because they have distinct IPs and serve different VLANs.
+  # Gateway = same subinterface on R1 (traffic to R1's own IP enters that interface).
+
+  R1 Management Interface:
     gateways:
       - router: "R1"
         interface: "GigabitEthernet0/0/1.20"
         prefix: "10.20.0.1/32"
+
+  R1 Operations Interface:
+    gateways:
       - router: "R1"
         interface: "GigabitEthernet0/0/1.30"
         prefix: "10.30.0.1/32"
+
+  R1 Sales Interface:
+    gateways:
       - router: "R1"
         interface: "GigabitEthernet0/0/1.40"
         prefix: "10.40.0.1/32"
 
-  R2:
+  R1 Loopback:
     gateways:
-      - router: "R2"
-        interface: "GigabitEthernet0/0/1"
-        prefix: "10.20.0.4/32"
+      - router: "R1"
+        interface: "Loopback1"
+        prefix: "172.16.1.1/32"
+
+  # ── Switch Management IPs (/32) ──────────────────────────────────────────────
+  # S1 and S2 have management IPs on VLAN 20 for SSH/Telnet access.
+  # S1 = 10.20.0.2, S2 = 10.20.0.3, both reachable via VLAN 20.
+  # Gateway = R1 GigabitEthernet0/0/1.20 — R1 routes VLAN 20 traffic.
+  # NOTE: S1 and S2 are L2 switches — they do NOT route. R1 is the gateway.
 
   S1:
     gateways:
-      - router: "S1"
-        interface: "Vlan20"
+      - router: "R1"
+        interface: "GigabitEthernet0/0/1.20"
         prefix: "10.20.0.2/32"
 
   S2:
     gateways:
-      - router: "S2"
-        interface: "Vlan20"
+      - router: "R1"
+        interface: "GigabitEthernet0/0/1.20"
         prefix: "10.20.0.3/32"
+
+  # ── R2 (/32) ─────────────────────────────────────────────────────────────────
+  # R2 is connected to VLAN 20 (Management Network) via G0/0/1.
+  # IP: 10.20.0.4 — used in lab for ACL testing (SSH target in Policy 1 test).
+  # Gateway = R2 itself since R2 is a router with its own interface.
+
+  R2:
+    gateways:
+      - router: "R1"
+        interface: "GigabitEthernet0/0/1"
+        prefix: "10.20.0.4/32"
+
+  # ── Internet (simulated) ─────────────────────────────────────────────────────
+  # R1 Loopback1 simulates an internet connection for ACL testing.
+  # Used when intent says "internet", "external", "outside world".
+  # Internet = the full /24 subnet. R1 Loopback above = the specific host /32.
+
+  Internet:
+    gateways:
+      - router: "R1"
+        interface: "Loopback1"
+        prefix: "172.16.1.0/24"

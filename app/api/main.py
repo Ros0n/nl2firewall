@@ -125,6 +125,10 @@ class PipelineStateResponse(BaseModel):
     explanation: str | None = None
     batfish_summary: str | None = None
     batfish_report: dict | None = None
+    # Disambiguation / ambiguity surfacing
+    clarification_needed: bool = False
+    clarification_questions: list[str] = []
+    incomplete: bool = False
 
     # Metadata
     estimated_line_count: int | None = None
@@ -247,6 +251,16 @@ def _state_to_response(state: PipelineState) -> PipelineStateResponse:
         explanation=state.explanation,
         batfish_summary=state.batfish_result.summary() if state.batfish_result else None,
         batfish_report=state.batfish_result.raw_output if state.batfish_result else None,
+        clarification_needed=(
+            bool(state.resolved_rule and state.resolved_rule.ambiguities)
+            or bool(state.resolved_rule and state.resolved_rule.incomplete)
+        ) if state.resolved_rule else False,
+        clarification_questions=(
+            state.resolved_rule.ambiguities if state.resolved_rule else []
+        ),
+        incomplete=(
+            state.resolved_rule.incomplete if state.resolved_rule else False
+        ),
         estimated_line_count=(
             state.resolved_rule.estimated_line_count() if state.resolved_rule else None
         ),
@@ -360,7 +374,15 @@ async def review_intent(
 ):
     """
     Submit human review decision.
-    Either approve the IR or provide feedback for the LLM to correct.
+
+    Two use cases:
+    1. Approve: set approve=true — pipeline continues to compile.
+    2. Clarify ambiguities: set approve=false, feedback = your answers to the
+       clarification_questions shown in the status response. The LLM will
+       re-resolve unresolved entities using your answers.
+
+    If the status shows clarification_needed=true, read clarification_questions
+    first and answer them in the feedback field before approving.
     """
     state = _sessions.get(session_id)
     if not state:

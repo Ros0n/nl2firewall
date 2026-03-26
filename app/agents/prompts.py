@@ -132,6 +132,15 @@ STEP 2 — Resolve SOURCE from SNMT
     "any host in X" / "all of X"
       → find entity X in SNMT, use its prefix.
 
+  RAW IP ADDRESS given instead of entity name:
+    If the source is written as a raw IP or CIDR (e.g. "192.168.30.0/24" or "10.40.0.10"):
+      → Search the SNMT for an entity whose prefix EXACTLY matches that IP/subnet.
+      → If found: use that entity's name, router, interface, prefix exactly from SNMT.
+      → If not found: use the IP as prefix, set router="" and interface="",
+        set incomplete=true, add to ambiguities[]:
+        "Source IP [X.X.X.X/YY] not found in the network context.
+         Which router and interface does this subnet connect to?"
+
   NOT FOUND — if entity cannot be resolved after all attempts:
     → add {"entity_name": "Not Found", "router": "", "interface": "", "prefix": "", "zone": null}
     → set incomplete=true
@@ -150,7 +159,9 @@ STEP 3 — Resolve DESTINATION from SNMT
 
   Additional destination patterns:
     "anywhere" / "any destination" / "the internet" (as destination)
+    "any other network" / "all other networks" / "everywhere else" / "any network"
       → destination_is_any=true, destinations=[]
+      These all mean the rule applies to traffic going to ANY destination.
     "all servers" / "the servers"
       → look for any entity with "server" in its name in SNMT.
         List all matches. If none → Not Found + add to ambiguities[].
@@ -670,39 +681,60 @@ def build_feedback_prompt(
     wrong_ir_json: str,
     human_feedback: str,
     snmt_block: str,          # re-injected so LLM can re-resolve entities
+    previous_ambiguities: list[str] | None = None,
 ) -> str:
     """
     Build the correction prompt for the feedback loop.
 
-    SNMT is re-injected here so the LLM can correctly resolve any entity
+    SNMT is re-injected so the LLM can correctly resolve any entity
     names mentioned in the human feedback without hallucinating.
+
+    previous_ambiguities: the list of questions the LLM flagged in the
+    previous round — shown alongside the human's answers so the LLM
+    understands exactly which ambiguity was resolved.
     """
-    return f"""The previous firewall rule IR was incorrect. The human reviewer provided feedback.
-Apply the feedback and generate a corrected IR.
+    # Format the ambiguity Q&A section if we have previous questions
+    ambiguity_section = ""
+    if previous_ambiguities:
+        qa_lines = ["=== AMBIGUITIES THE LLM FLAGGED (previous round) ==="]
+        for i, q in enumerate(previous_ambiguities, 1):
+            qa_lines.append(f"  Q{i}: {q}")
+        qa_lines.append("")
+        qa_lines.append("=== HUMAN ANSWERS TO THESE AMBIGUITIES ===")
+        qa_lines.append(f"  {human_feedback}")
+        qa_lines.append("")
+        qa_lines.append("Use these answers to resolve the flagged ambiguities.")
+        ambiguity_section = "\n".join(qa_lines)
+    else:
+        ambiguity_section = f"=== HUMAN FEEDBACK ===\n{human_feedback}"
+
+    return f"""The previous firewall rule IR needs correction. The human reviewer provided answers.
+Apply the answers and generate a corrected IR.
 
 === ORIGINAL INTENT ===
 {original_intent}
 
-=== PREVIOUS (INCORRECT) IR ===
+=== PREVIOUS IR (may be incomplete or incorrect) ===
 {wrong_ir_json}
 
-=== HUMAN FEEDBACK ===
-{human_feedback}
+{ambiguity_section}
 
-=== NETWORK CONTEXT (use this to re-resolve any entities mentioned in feedback) ===
+=== NETWORK CONTEXT (use this to re-resolve any entities mentioned in the answers) ===
 {snmt_block}
 
 === YOUR TASK ===
-1. Identify exactly what the feedback is asking to change.
-2. Re-apply the 7-step CoT reasoning with the correction in mind.
+1. Read the human answers carefully — they directly address the ambiguities flagged.
+2. Re-apply the 7-step CoT reasoning incorporating the new information.
 3. Re-check all 6 self-reflection checks.
 4. Output ONLY the corrected JSON. No explanation outside the JSON.
 
-If the feedback resolves a previous ambiguity or "Not Found" entity:
-  - Update the entity with the correct SNMT values.
-  - Remove the resolved ambiguity from ambiguities[].
-  - Update incomplete=false if all entities are now resolved.
-  - Increase confidence accordingly.
+When resolving previously flagged ambiguities:
+  - Update "Not Found" entities with the correct SNMT values based on the answers.
+  - Remove resolved items from ambiguities[].
+  - Set incomplete=false once ALL entities are resolved.
+  - Increase confidence to reflect the new certainty.
+  - If the answer provides an interface/router not in the SNMT, add it to the endpoint
+    with the values the human specified and note in ambiguities[] that it was manually provided.
 """
 
 

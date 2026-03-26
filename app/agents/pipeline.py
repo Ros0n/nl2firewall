@@ -76,11 +76,14 @@ async def resolve_intent(state: PipelineState) -> dict:
     system_prompt = build_system_prompt(snmt.to_prompt_block())
 
     if state.human_feedback and state.feedback_rounds > 0 and state.resolved_rule:
+        # Pass previous ambiguities so the LLM sees exactly which questions were answered
+        prev_ambiguities = state.resolved_rule.ambiguities if state.resolved_rule.ambiguities else None
         user_message = build_feedback_prompt(
             original_intent=state.intent_text,
             wrong_ir_json=state.resolved_rule.model_dump_json(indent=2),
             human_feedback=state.human_feedback,
             snmt_block=snmt.to_prompt_block(),
+            previous_ambiguities=prev_ambiguities,
         )
     else:
         user_message = (
