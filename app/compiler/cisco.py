@@ -150,7 +150,7 @@ class CiscoIOSCompiler(BaseCompiler):
     Output style:
         ip access-list extended ACL_Gi0_0_1_40_IN
          permit tcp 192.168.10.0 0.0.0.255 10.0.1.0 0.0.0.255 eq 443
-         deny   ip any any
+         
         !
         interface GigabitEthernet0/0/1.40
          ip access-group ACL_Gi0_0_1_40_IN in

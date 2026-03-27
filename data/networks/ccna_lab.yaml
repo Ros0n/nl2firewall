@@ -5,7 +5,7 @@ entities:
 
   # ── VLAN Network Segments ────────────────────────────────────────────────────
   # R1 is the gateway for all VLANs via subinterfaces on G0/0/1 (router-on-a-stick).
-  # ACLs are placed inbound on these subinterfaces to filter traffic at source.
+ 
 
   Sales Network:
     gateways:
