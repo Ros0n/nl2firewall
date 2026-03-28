@@ -56,3 +56,7 @@ Thumbs.db
 # Project specific
 *.log
 .ipynb_checkpoints/
+
+# Frontend
+frontend/node_modules/
+app/static/

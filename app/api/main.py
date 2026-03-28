@@ -22,21 +22,27 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from pathlib import Path
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.core.config import get_settings
-from app.snmt.loader import (
-    SNMTLoader, set_active_snmt, get_active_snmt,
-    require_snmt, reset_snmt, try_autoload,
-)
-from app.models.ir import PipelineState, PipelineStatus
 from app.agents.pipeline import get_pipeline
+from app.core.config import get_settings
+from app.models.ir import PipelineState, PipelineStatus
+from app.snmt.loader import (
+    SNMTLoader,
+    get_active_snmt,
+    require_snmt,
+    reset_snmt,
+    set_active_snmt,
+    try_autoload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +53,7 @@ _sessions: dict[str, PipelineState] = {}
 
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -59,9 +66,13 @@ async def lifespan(app: FastAPI):
     networks_dir = Path(settings.networks_dir)
     snmt = try_autoload(networks_dir)
     if snmt:
-        logger.info(f"Auto-loaded network context: '{snmt.network_name}' ({len(snmt.get_all_entities())} entities)")
+        logger.info(
+            f"Auto-loaded network context: '{snmt.network_name}' ({len(snmt.get_all_entities())} entities)"
+        )
     else:
-        logger.info("No network context loaded — upload via POST /api/network before submitting intents")
+        logger.info(
+            "No network context loaded — upload via POST /api/network before submitting intents"
+        )
 
     # Pre-compile LangGraph pipeline
     get_pipeline()
@@ -89,8 +100,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Static files (React build output) ───────────────────────────────────────
+_STATIC_DIR = Path(__file__).parent.parent / "static"
+if _STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=_STATIC_DIR / "assets"), name="assets")
+
 
 # ─── Request / Response models ───────────────────────────────────────────────
+
 
 class IntentRequest(BaseModel):
     intent: str
@@ -136,6 +153,7 @@ class PipelineStateResponse(BaseModel):
 
 # ─── Background pipeline runner ──────────────────────────────────────────────
 
+
 async def _run_pipeline(session_id: str, initial_state: PipelineState) -> None:
     """
     Runs the LangGraph pipeline for a given session.
@@ -161,7 +179,9 @@ async def _run_pipeline(session_id: str, initial_state: PipelineState) -> None:
         # If still showing RESOLVING/BUILDING_IR it means we hit the interrupt
         current = _sessions.get(session_id)
         if current and current.status not in (
-            PipelineStatus.COMPLETE, PipelineStatus.FAILED, PipelineStatus.BLOCKED
+            PipelineStatus.COMPLETE,
+            PipelineStatus.FAILED,
+            PipelineStatus.BLOCKED,
         ):
             current.status = PipelineStatus.AWAITING_REVIEW
             current.current_step = "Awaiting human review — approve or provide feedback"
@@ -176,45 +196,120 @@ async def _run_pipeline(session_id: str, initial_state: PipelineState) -> None:
             state.error = str(e)
 
 
+# Per-session lock: prevents two concurrent _resume_pipeline calls for the same session
+# (e.g. user double-clicks Approve while the pipeline is still running).
+_resume_locks: dict[str, bool] = {}
+
+
 async def _resume_pipeline(session_id: str, approved: bool, feedback: str) -> None:
     """Resume the pipeline after human review."""
+
+    # ── Concurrency guard ────────────────────────────────────────────────────
+    # If a resume is already in-flight for this session, ignore the duplicate.
+    if _resume_locks.get(session_id):
+        logger.warning(f"[{session_id}] Duplicate resume ignored — already running")
+        return
+    _resume_locks[session_id] = True
+
     pipeline = get_pipeline()
     config = {"configurable": {"thread_id": session_id}}
 
     state = _sessions.get(session_id)
     if not state:
         logger.error(f"[{session_id}] Session not found for resume")
+        _resume_locks.pop(session_id, None)
         return
+
+    # Remember whether this was a feedback round (not an approval).
+    # If it fails we can restore AWAITING_REVIEW so the user can retry.
+    is_feedback_round = not approved and bool(feedback)
+
+    # Mark as RUNNING immediately so the frontend stops showing the review panel
+    # and the API's review guard rejects any concurrent approve clicks.
+    state.status = (
+        PipelineStatus.RESOLVING if is_feedback_round else PipelineStatus.LINTING
+    )
+    state.current_step = (
+        "Re-resolving with your feedback…" if is_feedback_round else "Running pipeline…"
+    )
+    state.error = None
 
     # Patch the checkpointed state with the review decision
     state.human_feedback = "approve" if approved else feedback
-    if not approved and feedback:
+    if is_feedback_round:
         state.feedback_rounds += 1
-    pipeline.update_state(config, {"human_feedback": state.human_feedback,
-                                   "feedback_rounds": state.feedback_rounds})
+    pipeline.update_state(
+        config,
+        {
+            "human_feedback": state.human_feedback,
+            "feedback_rounds": state.feedback_rounds,
+        },
+    )
 
     try:
         logger.info(f"[{session_id}] Resuming pipeline (approved={approved})")
+
         async for event in pipeline.astream(None, config=config):
-            _sync_from_checkpoint(session_id, pipeline, config)
             node_name = list(event.keys())[0] if event else "unknown"
             logger.debug(f"[{session_id}] Node '{node_name}' completed (resume)")
 
+            # Only sync progress fields during streaming — never let mid-stream
+            # checkpoint writes flip the status to AWAITING_REVIEW, which would
+            # re-show the review panel while the pipeline is still running.
+            _sync_progress_only(session_id, pipeline, config)
+
+        # Streaming finished — do ONE authoritative final sync + status resolution.
         _sync_from_checkpoint(session_id, pipeline, config)
-        logger.info(f"[{session_id}] Pipeline resume complete")
+
+        snap = pipeline.get_state(config)
+        next_nodes = list(snap.next) if snap and snap.next else []
+
+        s = _sessions.get(session_id)
+        if not s:
+            return
+
+        if "await_review" in next_nodes:
+            # Graph is paused at the interrupt: feedback loop re-resolved,
+            # needs another human review pass.
+            s.status = PipelineStatus.AWAITING_REVIEW
+            s.current_step = "Awaiting human review — approve or provide feedback"
+            s.error = None
+            logger.info(f"[{session_id}] Pipeline interrupted again at await_review")
+        else:
+            # Pipeline ran to completion (COMPLETE / FAILED / BLOCKED all set
+            # by the nodes themselves and already synced above).
+            logger.info(f"[{session_id}] Pipeline resume complete (status={s.status})")
 
     except Exception as e:
         logger.exception(f"[{session_id}] Pipeline error in resume: {e}")
         s = _sessions.get(session_id)
         if s:
-            s.status = PipelineStatus.FAILED
-            s.error = str(e)
+            if is_feedback_round:
+                # Feedback re-resolve failed — restore AWAITING_REVIEW so the
+                # user can correct their feedback or approve the previous IR.
+                s.status = PipelineStatus.AWAITING_REVIEW
+                s.current_step = "Awaiting human review — approve or provide feedback"
+                s.error = (
+                    f"Re-resolve failed: {str(e)[:200]}. "
+                    "Correct your feedback or approve the previous rule."
+                )
+                logger.warning(
+                    f"[{session_id}] Feedback re-resolve failed — restored to AWAITING_REVIEW: {e}"
+                )
+            else:
+                s.status = PipelineStatus.FAILED
+                s.error = str(e)
+    finally:
+        _resume_locks.pop(session_id, None)
 
 
 def _sync_from_checkpoint(session_id: str, pipeline, config: dict) -> None:
     """
-    Pull the latest state from the LangGraph checkpoint and store it in _sessions.
-    This is how we keep the API's view of state current during streaming.
+    Full sync: pull ALL fields from the LangGraph checkpoint into _sessions.
+    Call this only ONCE after streaming ends — never mid-stream during a resume,
+    because mid-stream checkpoints can contain intermediate statuses (e.g.
+    AWAITING_REVIEW from the await_review node transiting through) that would
+    incorrectly re-show the review panel while the pipeline is still running.
     """
     try:
         snap = pipeline.get_state(config)
@@ -235,32 +330,85 @@ def _sync_from_checkpoint(session_id: str, pipeline, config: dict) -> None:
         logger.debug(f"Checkpoint sync failed (non-fatal): {e}")
 
 
+def _sync_progress_only(session_id: str, pipeline, config: dict) -> None:
+    """
+    Partial sync used MID-STREAM during _resume_pipeline.
+
+    Only updates safe progress fields (current_step, resolved_rule, lint_result,
+    safety_result, compiled_acl, batfish_result). Deliberately NEVER overwrites
+    status — that is set authoritatively only after streaming ends so we never
+    flash AWAITING_REVIEW mid-stream and re-enable the Approve button.
+    """
+    _PROGRESS_FIELDS = {
+        "current_step",
+        "resolved_rule",
+        "lint_result",
+        "safety_result",
+        "compiled_acl",
+        "batfish_result",
+        "error",
+    }
+    try:
+        snap = pipeline.get_state(config)
+        if not (snap and snap.values):
+            return
+        vals = snap.values
+        existing = _sessions.get(session_id)
+        if not existing:
+            return
+        if isinstance(vals, PipelineState):
+            for field in _PROGRESS_FIELDS:
+                v = getattr(vals, field, None)
+                if v is not None:
+                    try:
+                        setattr(existing, field, v)
+                    except Exception:
+                        pass
+        elif isinstance(vals, dict):
+            for k, v in vals.items():
+                if k in _PROGRESS_FIELDS and hasattr(existing, k) and v is not None:
+                    try:
+                        setattr(existing, k, v)
+                    except Exception:
+                        pass
+    except Exception as e:
+        logger.debug(f"Progress sync failed (non-fatal): {e}")
+
+
 def _state_to_response(state: PipelineState) -> PipelineStateResponse:
     """Convert PipelineState to API response model."""
     return PipelineStateResponse(
         session_id=state.session_id,
-        status=state.status.value if hasattr(state.status, 'value') else str(state.status),
+        status=state.status.value
+        if hasattr(state.status, "value")
+        else str(state.status),
         current_step=state.current_step,
         intent_text=state.intent_text,
         feedback_rounds=state.feedback_rounds,
         error=state.error,
         resolved_rule=state.resolved_rule.model_dump() if state.resolved_rule else None,
-        lint_issues=[i.model_dump() for i in state.lint_result.issues] if state.lint_result else None,
+        lint_issues=[i.model_dump() for i in state.lint_result.issues]
+        if state.lint_result
+        else None,
         safety_result=state.safety_result.model_dump() if state.safety_result else None,
         final_config=state.final_config,
         explanation=state.explanation,
-        batfish_summary=state.batfish_result.summary() if state.batfish_result else None,
-        batfish_report=state.batfish_result.raw_output if state.batfish_result else None,
+        batfish_summary=state.batfish_result.summary()
+        if state.batfish_result
+        else None,
+        batfish_report=state.batfish_result.raw_output
+        if state.batfish_result
+        else None,
         clarification_needed=(
             bool(state.resolved_rule and state.resolved_rule.ambiguities)
             or bool(state.resolved_rule and state.resolved_rule.incomplete)
-        ) if state.resolved_rule else False,
+        )
+        if state.resolved_rule
+        else False,
         clarification_questions=(
             state.resolved_rule.ambiguities if state.resolved_rule else []
         ),
-        incomplete=(
-            state.resolved_rule.incomplete if state.resolved_rule else False
-        ),
+        incomplete=(state.resolved_rule.incomplete if state.resolved_rule else False),
         estimated_line_count=(
             state.resolved_rule.estimated_line_count() if state.resolved_rule else None
         ),
@@ -268,6 +416,7 @@ def _state_to_response(state: PipelineState) -> PipelineStateResponse:
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
+
 
 @app.get("/health")
 async def health():
@@ -279,10 +428,11 @@ async def get_network_context():
     """Return the currently loaded network context as JSON."""
     snmt = get_active_snmt()
     if not snmt:
-        return {"loaded": False, "message": "No network context loaded. POST /api/network to upload one."}
+        return {
+            "loaded": False,
+            "message": "No network context loaded. POST /api/network to upload one.",
+        }
     return {"loaded": True, **snmt.to_compact_json()}
-
-
 
 
 @app.post("/api/network")
@@ -308,7 +458,9 @@ async def upload_network_context(file: UploadFile = File(...)):
         yaml_content = content_bytes.decode("utf-8")
         snmt = SNMTLoader.from_string(yaml_content)
         set_active_snmt(snmt)
-        logger.info(f"Network context loaded via API: '{snmt.network_name}' ({len(snmt.get_all_entities())} entities)")
+        logger.info(
+            f"Network context loaded via API: '{snmt.network_name}' ({len(snmt.get_all_entities())} entities)"
+        )
         return {
             "loaded": True,
             "network_name": snmt.network_name,
@@ -317,9 +469,14 @@ async def upload_network_context(file: UploadFile = File(...)):
             "message": f"Network context '{snmt.network_name}' loaded successfully.",
         }
     except (ValueError, KeyError) as e:
-        raise HTTPException(status_code=422, detail=f"Invalid network context file: {str(e)}")
+        raise HTTPException(
+            status_code=422, detail=f"Invalid network context file: {str(e)}"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load network context: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load network context: {str(e)}"
+        )
+
 
 @app.post("/api/intents", response_model=IntentResponse)
 async def submit_intent(
@@ -388,12 +545,45 @@ async def review_intent(
     if not state:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    status_val = state.status.value if hasattr(state.status, 'value') else str(state.status)
-    if status_val != "awaiting_review":
+    status_val = (
+        state.status.value if hasattr(state.status, "value") else str(state.status)
+    )
+
+    # If a resume is already in-flight (concurrency guard), reject immediately.
+    if _resume_locks.get(session_id):
         raise HTTPException(
-            status_code=400,
-            detail=f"Session is not awaiting review (current status: {status_val})"
+            status_code=409,
+            detail="A resume is already in progress for this session. Please wait.",
         )
+
+    if status_val != "awaiting_review":
+        # Give a human-readable explanation based on the actual status
+        if status_val == "failed":
+            error_hint = state.error or "An unknown error occurred."
+            detail = (
+                f"The pipeline failed and is no longer awaiting review. "
+                f"Reason: {error_hint} "
+                f"Please submit a new intent."
+            )
+        elif status_val == "complete":
+            detail = "This pipeline has already completed. Use GET /config to retrieve the result."
+        elif status_val == "blocked":
+            detail = f"This pipeline was blocked by the safety gate: {state.error or 'see session details'}."
+        elif status_val in (
+            "pending",
+            "resolving",
+            "building_ir",
+            "linting",
+            "safety_check",
+            "compiling",
+            "verifying",
+        ):
+            detail = (
+                f"The pipeline is still running (status: {status_val}). Please wait."
+            )
+        else:
+            detail = f"Session is not awaiting review (current status: {status_val})."
+        raise HTTPException(status_code=400, detail=detail)
 
     background_tasks.add_task(
         _resume_pipeline,
@@ -418,11 +608,12 @@ async def get_final_config(session_id: str):
     if not state:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    status_val = state.status.value if hasattr(state.status, 'value') else str(state.status)
+    status_val = (
+        state.status.value if hasattr(state.status, "value") else str(state.status)
+    )
     if status_val != "complete":
         raise HTTPException(
-            status_code=400,
-            detail=f"Pipeline not complete yet (status: {status_val})"
+            status_code=400, detail=f"Pipeline not complete yet (status: {status_val})"
         )
 
     return {
@@ -434,8 +625,12 @@ async def get_final_config(session_id: str):
         "interface": state.compiled_acl.interface if state.compiled_acl else None,
         "line_count": len(state.compiled_acl.lines) if state.compiled_acl else 0,
         "batfish_passed": state.batfish_result.passed if state.batfish_result else None,
-        "batfish_report": state.batfish_result.raw_output if state.batfish_result else None,
-        "batfish_flow_traces": state.batfish_result.flow_traces() if state.batfish_result else [],
+        "batfish_report": state.batfish_result.raw_output
+        if state.batfish_result
+        else None,
+        "batfish_flow_traces": state.batfish_result.flow_traces()
+        if state.batfish_result
+        else [],
     }
 
 
@@ -444,7 +639,7 @@ async def list_sessions():
     """List all active sessions (for debugging)."""
     return {
         sid: {
-            "status": s.status.value if hasattr(s.status, 'value') else str(s.status),
+            "status": s.status.value if hasattr(s.status, "value") else str(s.status),
             "intent": s.intent_text[:60],
             "feedback_rounds": s.feedback_rounds,
         }
@@ -459,3 +654,16 @@ async def delete_session(session_id: str):
         del _sessions[session_id]
         return {"deleted": session_id}
     raise HTTPException(status_code=404, detail="Session not found")
+
+
+# ─── SPA catch-all — serve React index.html for all non-API routes ────────────
+# Must be registered LAST so it doesn't shadow any API routes.
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    """Serve the React SPA for any route that isn't an API endpoint."""
+    index = _STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(str(index))
+    return {"detail": "Frontend not built. Run: cd frontend && npm run build"}

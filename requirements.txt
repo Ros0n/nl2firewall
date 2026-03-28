@@ -26,3 +26,6 @@ httpx==0.27.2
 
 # Utilities
 python-dotenv==1.0.1
+
+# Static file serving (required for FastAPI StaticFiles)
+aiofiles==25.1.0

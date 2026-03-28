@@ -18,29 +18,40 @@ import json
 import logging
 from typing import Any
 
-from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
 from pydantic import ValidationError
 
-from app.models.ir import (
-    CanonicalRule, PipelineState, PipelineStatus,
-    Endpoint, PortSpec, InterfaceTarget,
-    Protocol, PortOperator, Action, Direction,
-)
 from app.agents.groq_client import get_groq_client
 from app.agents.prompts import (
-    build_system_prompt, build_feedback_prompt, build_explanation_prompt,
+    build_explanation_prompt,
+    build_feedback_prompt,
+    build_feedback_system_prompt,
+    build_system_prompt,
 )
-from app.snmt.loader import require_snmt
-from app.safety.linter import run_linter
-from app.safety.gate import run_safety_gate
 from app.compiler.cisco import CiscoIOSCompiler
+from app.models.ir import (
+    Action,
+    CanonicalRule,
+    Direction,
+    Endpoint,
+    InterfaceTarget,
+    PipelineState,
+    PipelineStatus,
+    PortOperator,
+    PortSpec,
+    Protocol,
+)
+from app.safety.gate import run_safety_gate
+from app.safety.linter import run_linter
+from app.snmt.loader import require_snmt
 from app.verification.batfish_manager import BatfishManager
 
 logger = logging.getLogger(__name__)
 
 
 # ─── JSON dict → CanonicalRule ────────────────────────────────────────────────
+
 
 def _dict_to_rule(data: dict[str, Any]) -> tuple[CanonicalRule | None, str | None]:
     """Parse LLM JSON output into a validated CanonicalRule."""
@@ -60,6 +71,53 @@ def _dict_to_rule(data: dict[str, Any]) -> tuple[CanonicalRule | None, str | Non
             if isinstance(ps.get("operator"), str):
                 ps["operator"] = ps["operator"].lower()
 
+        # Coerce icmp_type: LLM sometimes returns an integer (e.g. 8 for echo)
+        # instead of the string name. Convert int → str so Pydantic accepts it.
+        if "icmp_type" in data and data["icmp_type"] is not None:
+            if isinstance(data["icmp_type"], int):
+                # Map common ICMP type numbers to their IOS keyword names.
+                # Fall back to the numeric string if unknown.
+                _ICMP_TYPE_NAMES = {
+                    0: "echo-reply",
+                    3: "unreachable",
+                    5: "redirect",
+                    8: "echo",
+                    11: "time-exceeded",
+                    12: "parameter-problem",
+                    13: "timestamp",
+                    14: "timestamp-reply",
+                    17: "mask-request",
+                    18: "mask-reply",
+                }
+                data["icmp_type"] = _ICMP_TYPE_NAMES.get(
+                    data["icmp_type"], str(data["icmp_type"])
+                )
+            elif isinstance(data["icmp_type"], str):
+                data["icmp_type"] = data["icmp_type"].lower()
+
+        # Coerce icmp_code: LLM sometimes returns a string instead of int.
+        if "icmp_code" in data and data["icmp_code"] is not None:
+            if isinstance(data["icmp_code"], str):
+                try:
+                    data["icmp_code"] = int(data["icmp_code"])
+                except ValueError:
+                    data["icmp_code"] = None
+
+        # Coerce rule_name: strip spaces and special characters the LLM sneaks in.
+        if "rule_name" in data and isinstance(data["rule_name"], str):
+            import re as _re
+
+            data["rule_name"] = _re.sub(
+                r"[^a-zA-Z0-9_\-]", "_", data["rule_name"]
+            ).strip("_")
+
+        # Coerce confidence: LLM sometimes returns a string like "0.9".
+        if "confidence" in data and isinstance(data["confidence"], str):
+            try:
+                data["confidence"] = float(data["confidence"])
+            except ValueError:
+                data["confidence"] = 0.5
+
         rule = CanonicalRule(**data)
         return rule, None
     except (ValidationError, TypeError, KeyError) as e:
@@ -68,24 +126,29 @@ def _dict_to_rule(data: dict[str, Any]) -> tuple[CanonicalRule | None, str | Non
 
 # ─── Node 1: Resolve intent ────────────────────────────────────────────────────
 
+
 async def resolve_intent(state: PipelineState) -> dict:
     logger.info(f"[{state.session_id}] Resolving intent: {state.intent_text[:80]}")
 
     snmt = require_snmt()
     client = get_groq_client()
-    system_prompt = build_system_prompt(snmt.to_prompt_block())
 
     if state.human_feedback and state.feedback_rounds > 0 and state.resolved_rule:
-        # Pass previous ambiguities so the LLM sees exactly which questions were answered
-        prev_ambiguities = state.resolved_rule.ambiguities if state.resolved_rule.ambiguities else None
+        # Feedback round: use the lean system prompt (no CoT/examples) to stay
+        # well under the 8 000 TPM limit. SNMT lives in the system prompt only.
+        system_prompt = build_feedback_system_prompt(snmt.to_prompt_block())
+        prev_ambiguities = (
+            state.resolved_rule.ambiguities if state.resolved_rule.ambiguities else None
+        )
         user_message = build_feedback_prompt(
             original_intent=state.intent_text,
             wrong_ir_json=state.resolved_rule.model_dump_json(indent=2),
             human_feedback=state.human_feedback,
-            snmt_block=snmt.to_prompt_block(),
             previous_ambiguities=prev_ambiguities,
         )
     else:
+        # First pass: full system prompt with CoT, self-reflection, few-shot examples
+        system_prompt = build_system_prompt(snmt.to_prompt_block())
         user_message = (
             f"Translate this network security intent into the Canonical Rule IR JSON:\n\n"
             f"{state.intent_text}"
@@ -101,8 +164,13 @@ async def resolve_intent(state: PipelineState) -> dict:
                 "status": PipelineStatus.FAILED,
                 "error": f"IR parsing error: {error}",
                 "current_step": "Resolver failed — IR validation error",
-                "llm_messages": state.llm_messages + [
-                    {"role": "assistant", "content": str(raw_json), "step": "resolve_intent"}
+                "llm_messages": state.llm_messages
+                + [
+                    {
+                        "role": "assistant",
+                        "content": str(raw_json),
+                        "step": "resolve_intent",
+                    }
                 ],
             }
 
@@ -111,8 +179,13 @@ async def resolve_intent(state: PipelineState) -> dict:
             "current_step": "Resolver complete",
             "resolved_rule": rule,
             "error": None,
-            "llm_messages": state.llm_messages + [
-                {"role": "assistant", "content": str(raw_json), "step": "resolve_intent"}
+            "llm_messages": state.llm_messages
+            + [
+                {
+                    "role": "assistant",
+                    "content": str(raw_json),
+                    "step": "resolve_intent",
+                }
             ],
         }
 
@@ -127,13 +200,17 @@ async def resolve_intent(state: PipelineState) -> dict:
 
 # ─── Node 2: Build/validate rule ──────────────────────────────────────────────
 
+
 async def build_rule(state: PipelineState) -> dict:
     if state.status == PipelineStatus.FAILED:
-        return {}
+        return {"current_step": state.current_step}
 
     if not state.resolved_rule:
-        return {"status": PipelineStatus.FAILED, "error": "No rule to validate",
-                "current_step": "Build rule failed"}
+        return {
+            "status": PipelineStatus.FAILED,
+            "error": "No rule to validate",
+            "current_step": "Build rule failed",
+        }
 
     snmt = require_snmt()
     rule = state.resolved_rule
@@ -141,22 +218,28 @@ async def build_rule(state: PipelineState) -> dict:
     def _fix_endpoints(endpoints: list[Endpoint]) -> list[Endpoint]:
         fixed = []
         for ep in endpoints:
-            entity = snmt.get_entity(ep.entity_name) or snmt.get_entity_fuzzy(ep.entity_name)
+            entity = snmt.get_entity(ep.entity_name) or snmt.get_entity_fuzzy(
+                ep.entity_name
+            )
             if entity and entity.primary_gateway:
                 matched_gw = entity.primary_gateway
                 for g in entity.gateways:
                     if g.prefix == ep.prefix:
                         matched_gw = g
                         break
-                fixed.append(Endpoint(
-                    entity_name=entity.name,
-                    router=matched_gw.router,
-                    interface=matched_gw.interface,
-                    prefix=matched_gw.prefix,
-                    zone=ep.zone,
-                ))
+                fixed.append(
+                    Endpoint(
+                        entity_name=entity.name,
+                        router=matched_gw.router,
+                        interface=matched_gw.interface,
+                        prefix=matched_gw.prefix,
+                        zone=ep.zone,
+                    )
+                )
             else:
-                logger.warning(f"Entity '{ep.entity_name}' not in SNMT — keeping LLM value")
+                logger.warning(
+                    f"Entity '{ep.entity_name}' not in SNMT — keeping LLM value"
+                )
                 fixed.append(ep)
         return fixed
 
@@ -170,28 +253,36 @@ async def build_rule(state: PipelineState) -> dict:
             matched = False
             for entity in snmt.get_all_entities():
                 for gw in entity.gateways:
-                    if (gw.interface.lower() == iface.interface.lower() and
-                            gw.router.lower() == iface.router.lower()):
-                        fixed.append(InterfaceTarget(
-                            router=gw.router,
-                            interface=gw.interface,
-                            direction=iface.direction,
-                            zone=iface.zone,
-                        ))
+                    if (
+                        gw.interface.lower() == iface.interface.lower()
+                        and gw.router.lower() == iface.router.lower()
+                    ):
+                        fixed.append(
+                            InterfaceTarget(
+                                router=gw.router,
+                                interface=gw.interface,
+                                direction=iface.direction,
+                                zone=iface.zone,
+                            )
+                        )
                         matched = True
                         break
                 if matched:
                     break
             if not matched:
-                logger.warning(f"Interface {iface.router}/{iface.interface} not in SNMT")
+                logger.warning(
+                    f"Interface {iface.router}/{iface.interface} not in SNMT"
+                )
                 fixed.append(iface)
         return fixed
 
-    corrected = rule.model_copy(update={
-        "sources": _fix_endpoints(rule.sources),
-        "destinations": _fix_endpoints(rule.destinations),
-        "interfaces": _fix_interfaces(rule.interfaces),
-    })
+    corrected = rule.model_copy(
+        update={
+            "sources": _fix_endpoints(rule.sources),
+            "destinations": _fix_endpoints(rule.destinations),
+            "interfaces": _fix_interfaces(rule.interfaces),
+        }
+    )
 
     logger.info(
         f"[{state.session_id}] Rule validated: "
@@ -207,12 +298,14 @@ async def build_rule(state: PipelineState) -> dict:
 
 # ─── Node 3: Human review interrupt ───────────────────────────────────────────
 
+
 async def await_review(state: PipelineState) -> dict:
     logger.info(f"[{state.session_id}] Paused for human review")
     return {"current_step": "Human review — approve or provide feedback"}
 
 
 # ─── Node 4: Lint ─────────────────────────────────────────────────────────────
+
 
 async def lint(state: PipelineState) -> dict:
     if state.status in (PipelineStatus.FAILED, PipelineStatus.BLOCKED):
@@ -230,6 +323,7 @@ async def lint(state: PipelineState) -> dict:
 
 
 # ─── Node 5: Safety gate ──────────────────────────────────────────────────────
+
 
 async def safety_check(state: PipelineState) -> dict:
     if state.status in (PipelineStatus.FAILED, PipelineStatus.BLOCKED):
@@ -251,6 +345,7 @@ async def safety_check(state: PipelineState) -> dict:
 
 
 # ─── Node 6: Compile ──────────────────────────────────────────────────────────
+
 
 async def compile_acl(state: PipelineState) -> dict:
     if state.status in (PipelineStatus.FAILED, PipelineStatus.BLOCKED):
@@ -278,6 +373,7 @@ async def compile_acl(state: PipelineState) -> dict:
 
 # ─── Node 7: Batfish verify ───────────────────────────────────────────────────
 
+
 async def verify_batfish(state: PipelineState) -> dict:
     if state.status in (PipelineStatus.FAILED, PipelineStatus.BLOCKED):
         return {"current_step": state.current_step}  # pass through, no change
@@ -296,10 +392,10 @@ async def verify_batfish(state: PipelineState) -> dict:
     except Exception as e:
         logger.warning(f"Batfish unavailable (non-fatal): {e}")
         from app.models.ir import BatfishResult
+
         return {
             "batfish_result": BatfishResult(
-                passed=False,
-                parse_warnings=[f"Batfish unavailable: {str(e)}"]
+                passed=False, parse_warnings=[f"Batfish unavailable: {str(e)}"]
             ),
             "current_step": f"Batfish skipped: {str(e)[:60]}",
         }
@@ -307,12 +403,16 @@ async def verify_batfish(state: PipelineState) -> dict:
 
 # ─── Node 8: Generate output ──────────────────────────────────────────────────
 
+
 async def generate_output(state: PipelineState) -> dict:
     if state.status in (PipelineStatus.FAILED, PipelineStatus.BLOCKED):
         return {"current_step": state.current_step}  # pass through, no change
     if not state.compiled_acl:
-        return {"status": PipelineStatus.FAILED, "error": "No compiled ACL",
-                "current_step": "Output generation failed"}
+        return {
+            "status": PipelineStatus.FAILED,
+            "error": "No compiled ACL",
+            "current_step": "Output generation failed",
+        }
 
     final_config = state.compiled_acl.to_cisco_config()
 
@@ -325,8 +425,8 @@ async def generate_output(state: PipelineState) -> dict:
             trace_lines = ["\nBatfish verified the following representative flows:"]
             for t in traces[:3]:  # show max 3 traces
                 trace_lines.append(
-                    f"  Flow: {t.get('flow','')}  →  {t.get('action','')}  "
-                    f"(matched: {t.get('matched_line','')})"
+                    f"  Flow: {t.get('flow', '')}  →  {t.get('action', '')}  "
+                    f"(matched: {t.get('matched_line', '')})"
                 )
             batfish_context = "\n".join(trace_lines)
 
@@ -358,6 +458,7 @@ async def generate_output(state: PipelineState) -> dict:
 
 # ─── Routing ───────────────────────────────────────────────────────────────────
 
+
 def route_after_review(state: PipelineState) -> str:
     feedback = (state.human_feedback or "").strip().lower()
     if feedback in ("", "approve", "ok", "looks good", "approved", "yes"):
@@ -378,35 +479,35 @@ def route_after_batfish(state: PipelineState) -> str:
 
 # ─── Graph construction ────────────────────────────────────────────────────────
 
+
 def build_pipeline_graph() -> StateGraph:
     graph = StateGraph(PipelineState)
 
-    graph.add_node("resolve_intent",  resolve_intent)
-    graph.add_node("build_rule",      build_rule)
-    graph.add_node("await_review",    await_review)
-    graph.add_node("lint",            lint)
-    graph.add_node("safety_check",    safety_check)
-    graph.add_node("compile_acl",     compile_acl)
-    graph.add_node("verify_batfish",  verify_batfish)
+    graph.add_node("resolve_intent", resolve_intent)
+    graph.add_node("build_rule", build_rule)
+    graph.add_node("await_review", await_review)
+    graph.add_node("lint", lint)
+    graph.add_node("safety_check", safety_check)
+    graph.add_node("compile_acl", compile_acl)
+    graph.add_node("verify_batfish", verify_batfish)
     graph.add_node("generate_output", generate_output)
 
     graph.set_entry_point("resolve_intent")
     graph.add_edge("resolve_intent", "build_rule")
-    graph.add_edge("build_rule",     "await_review")
-    graph.add_edge("lint",           "safety_check")
-    graph.add_edge("compile_acl",    "verify_batfish")
+    graph.add_edge("build_rule", "await_review")
+    graph.add_edge("lint", "safety_check")
+    graph.add_edge("compile_acl", "verify_batfish")
 
     graph.add_conditional_edges(
-        "await_review", route_after_review,
-        {"lint": "lint", "resolve_intent": "resolve_intent"}
+        "await_review",
+        route_after_review,
+        {"lint": "lint", "resolve_intent": "resolve_intent"},
     )
     graph.add_conditional_edges(
-        "safety_check", route_after_safety,
-        {"compile_acl": "compile_acl", END: END}
+        "safety_check", route_after_safety, {"compile_acl": "compile_acl", END: END}
     )
     graph.add_conditional_edges(
-        "verify_batfish", route_after_batfish,
-        {"generate_output": "generate_output"}
+        "verify_batfish", route_after_batfish, {"generate_output": "generate_output"}
     )
     graph.add_edge("generate_output", END)
 
@@ -421,6 +522,7 @@ def create_compiled_graph():
 
 
 _compiled_graph = None
+
 
 def get_pipeline():
     global _compiled_graph

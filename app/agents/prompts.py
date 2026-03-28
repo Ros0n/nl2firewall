@@ -8,17 +8,15 @@ Prompting strategy — 7 techniques combined:
   4. Self-reflection — 6 verification checks before writing JSON
   5. Few-shot examples — 7 generic examples covering all major patterns
   6. Hard constraints — critical rules that override everything
-  7. Feedback prompt — re-injects SNMT so entity re-resolution works
+  7. Feedback prompt — lean system prompt (no CoT/examples) to stay under token limits
 
-Improvements over v1:
-  - Extended protocol vocabulary (15+ protocols)
-  - Exception/negation language ('except', 'but not', 'excluding')
-  - Ambiguous entity reference handling ('the router', 'any host', 'the internet')
-  - Direction edge cases ('incoming from outside', 'traffic leaving the network')
-  - Typo/abbreviation tolerance (from Xumi paper)
-  - 'Not Found' + 'Incomplete' pattern for unresolvable entities (from Xumi paper)
-  - Feedback prompt now re-injects SNMT for correct entity re-resolution
-  - Ambiguity flagging with specific clarifying questions for human reviewer
+Two system prompts:
+  - build_system_prompt()         → full prompt for first-pass resolution
+  - build_feedback_system_prompt() → lean prompt for correction round (SNMT + schema only)
+
+The feedback USER message no longer re-injects the SNMT because it is already
+present in the feedback system prompt. This keeps the combined token count well
+under the 8 000 TPM limit of the free Groq tier.
 """
 
 # ─── IR JSON Schema ────────────────────────────────────────────────────────────
@@ -247,7 +245,7 @@ STEP 4b — EXCEPTION / NEGATION LANGUAGE
   Our IR has no 'exclude' field. Handle exceptions as follows:
   If you find exception cases add them to the ambiguities. Find what type of exception it is source, destination, protocol
   or others and flag to ambiguties with explanatin about what exception is.
- 
+
 
   ALWAYS set confidence ≤ 0.8 when an exception is detected.
 
@@ -547,6 +545,7 @@ Step 6: tcp_established=true (return traffic only).
 
 # ─── System prompt builder ────────────────────────────────────────────────────
 
+
 def build_system_prompt(snmt_block: str) -> str:
     """
     Build the full system prompt.
@@ -603,65 +602,110 @@ No markdown, no backticks, no explanation text outside the JSON object.
 """
 
 
+def build_feedback_system_prompt(snmt_block: str) -> str:
+    """
+    Lean system prompt used ONLY for correction/feedback rounds.
+
+    Intentionally omits CoT steps, self-reflection, and few-shot examples
+    to stay within the 8 000 token-per-minute limit on the free Groq tier.
+    The SNMT is injected here (not in the user message) so entity re-resolution
+    still works without doubling the token count.
+    """
+    return f"""You are an expert network security engineer correcting a firewall rule IR.
+
+Output ONLY valid JSON matching the schema below. No markdown, no backticks, no text outside the JSON.
+
+{snmt_block}
+
+=== OUTPUT SCHEMA ===
+{IR_JSON_SCHEMA}
+
+=== CORRECTION RULES ===
+1. Read the human feedback and apply it precisely to the previous IR.
+2. Re-resolve any "Not Found" entities using the SNMT above.
+3. Every entity_name, router, interface, prefix MUST come from the SNMT — or remain "Not Found" with incomplete=true.
+4. ICMP rules: dst_ports MUST be []. Use icmp_type instead.
+5. IP protocol: dst_ports MUST be [].
+6. interfaces[] MUST NOT be empty.
+7. Remove resolved items from ambiguities[] and lower confidence accordingly.
+8. Set incomplete=false once ALL entities are resolved.
+9. Output ONLY the corrected JSON object.
+"""
+
+
 def build_feedback_prompt(
     original_intent: str,
     wrong_ir_json: str,
     human_feedback: str,
-    snmt_block: str,          # re-injected so LLM can re-resolve entities
     previous_ambiguities: list[str] | None = None,
 ) -> str:
     """
-    Build the correction prompt for the feedback loop.
+    Build the user-turn correction message for the feedback loop.
 
-    SNMT is re-injected so the LLM can correctly resolve any entity
-    names mentioned in the human feedback without hallucinating.
+    The SNMT is NOT re-injected here — it lives in build_feedback_system_prompt()
+    to avoid doubling the token count and hitting the 413 rate limit.
 
-    previous_ambiguities: the list of questions the LLM flagged in the
-    previous round — shown alongside the human's answers so the LLM
-    understands exactly which ambiguity was resolved.
+    previous_ambiguities: the questions the LLM flagged last round, shown
+    alongside the human's answers so the model knows which gap was filled.
     """
-    # Format the ambiguity Q&A section if we have previous questions
-    ambiguity_section = ""
+    # Format the ambiguity Q&A section
     if previous_ambiguities:
-        qa_lines = ["=== AMBIGUITIES THE LLM FLAGGED (previous round) ==="]
+        qa_lines = ["=== AMBIGUITIES FROM PREVIOUS ROUND ==="]
         for i, q in enumerate(previous_ambiguities, 1):
             qa_lines.append(f"  Q{i}: {q}")
         qa_lines.append("")
-        qa_lines.append("=== HUMAN ANSWERS TO THESE AMBIGUITIES ===")
+        qa_lines.append("=== HUMAN ANSWERS ===")
         qa_lines.append(f"  {human_feedback}")
         qa_lines.append("")
-        qa_lines.append("Use these answers to resolve the flagged ambiguities.")
+        qa_lines.append("Use these answers to fix the IR.")
         ambiguity_section = "\n".join(qa_lines)
     else:
         ambiguity_section = f"=== HUMAN FEEDBACK ===\n{human_feedback}"
 
-    return f"""The previous firewall rule IR needs correction. The human reviewer provided answers.
-Apply the answers and generate a corrected IR.
+    # Trim the previous IR to essential fields only to save tokens.
+    # The full JSON is not needed — source/destination/protocol/ports/interfaces
+    # are the only fields a correction round typically changes.
+    import json as _json
+
+    try:
+        prev = _json.loads(wrong_ir_json)
+        trimmed = {
+            k: prev[k]
+            for k in (
+                "rule_name",
+                "sources",
+                "destinations",
+                "source_is_any",
+                "destination_is_any",
+                "protocol",
+                "src_ports",
+                "dst_ports",
+                "action",
+                "direction",
+                "interfaces",
+                "icmp_type",
+                "tcp_established",
+                "ambiguities",
+                "incomplete",
+                "confidence",
+            )
+            if k in prev
+        }
+        prev_ir_text = _json.dumps(trimmed, indent=2)
+    except Exception:
+        prev_ir_text = wrong_ir_json
+
+    return f"""Correct the firewall rule IR below based on the human feedback.
 
 === ORIGINAL INTENT ===
 {original_intent}
 
-=== PREVIOUS IR (may be incomplete or incorrect) ===
-{wrong_ir_json}
+=== PREVIOUS IR (fields that may need correction) ===
+{prev_ir_text}
 
 {ambiguity_section}
 
-=== NETWORK CONTEXT (use this to re-resolve any entities mentioned in the answers) ===
-{snmt_block}
-
-=== YOUR TASK ===
-1. Read the human answers carefully — they directly address the ambiguities flagged.
-2. Re-apply the 7-step CoT reasoning incorporating the new information.
-3. Re-check all 6 self-reflection checks.
-4. Output ONLY the corrected JSON. No explanation outside the JSON.
-
-When resolving previously flagged ambiguities:
-  - Update "Not Found" entities with the correct SNMT values based on the answers.
-  - Remove resolved items from ambiguities[].
-  - Set incomplete=false once ALL entities are resolved.
-  - Increase confidence to reflect the new certainty.
-  - If the answer provides an interface/router not in the SNMT, add it to the endpoint
-    with the values the human specified and note in ambiguities[] that it was manually provided.
+Output ONLY the corrected JSON. No explanation outside the JSON.
 """
 
 
