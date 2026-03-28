@@ -1,0 +1,501 @@
+{
+  "test_suite": "CCNA Lab Extended ACL",
+  "description": "10 test cases with polices from lab",
+  "version": "2.0",
+  "snmt_file": "data/networks/ccna_lab.yaml",
+  "test_cases": [
+    {
+      "id": "tc01_policy1_sales_ssh_mgmt",
+      "description": "Policy 1: Block Sales SSH to Management Network",
+      "nl_query": "The sales network is not allowed to SSH into the management network",
+      "expected_ir": {
+        "rule_name": "policy1_sales_ssh_mgmt",
+        "description": "Block SSH from Sales to Management",
+        "intent_text": "The sales network is not allowed to SSH into the management network",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "Management Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.20",
+            "prefix": "10.20.0.0/24"
+          }
+        ],
+        "protocol": "tcp",
+        "src_ports": [],
+        "dst_ports": [{ "operator": "eq", "port": 22, "port_high": null }],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": null,
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 22\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc02_policy2_sales_http_mgmt",
+      "description": "Policy 2: Block Sales HTTP to Management Network",
+      "nl_query": "The sales network should not reach the management network via HTTP",
+      "expected_ir": {
+        "rule_name": "policy2_sales_http_mgmt",
+        "description": "Block HTTP from Sales to Management",
+        "intent_text": "The sales network should not reach the management network via HTTP",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "Management Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.20",
+            "prefix": "10.20.0.0/24"
+          }
+        ],
+        "protocol": "tcp",
+        "src_ports": [],
+        "dst_ports": [{ "operator": "eq", "port": 80, "port_high": null }],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": null,
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 80\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc03_policy2_sales_https_mgmt",
+      "description": "Policy 2: Block Sales HTTPS to Management Network",
+      "nl_query": "Sales network is not allowed to access the management network via HTTPS",
+      "expected_ir": {
+        "rule_name": "policy2_sales_https_mgmt",
+        "description": "Block HTTPS from Sales to Management",
+        "intent_text": "Sales network is not allowed to access the management network via HTTPS",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "Management Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.20",
+            "prefix": "10.20.0.0/24"
+          }
+        ],
+        "protocol": "tcp",
+        "src_ports": [],
+        "dst_ports": [{ "operator": "eq", "port": 443, "port_high": null }],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": null,
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 443\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc04_policy2_sales_web_r1_interfaces",
+      "description": "Policy 2: Block Sales HTTP/HTTPS to R1 Interface IPs",
+      "nl_query": "Blcok all web protocols from Sales Network to R1 Operations Interface",
+      "expected_ir": {
+        "rule_name": "policy2_sales_web_r1_ifaces",
+        "description": "Block Sales web access to R1 subinterface IPs",
+        "intent_text": "Block all web protocols from Sales Network to R1 Operations Interface",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "R1 Operations Interface",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.30",
+            "prefix": "10.30.0.1/32"
+          }
+        ],
+        "protocol": "tcp",
+        "src_ports": [],
+        "dst_ports": [
+          { "operator": "eq", "port": 80, "port_high": null },
+          { "operator": "eq", "port": 443, "port_high": null }
+        ],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": null,
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny tcp 10.40.0.0 0.0.0.255 host 10.30.0.1 eq 80\n 20 deny tcp 10.40.0.0 0.0.0.255 host 10.30.0.1 eq 443!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc05_policy3_sales_ping_mgmt",
+      "description": "Policy 3: Block Sales ICMP echo to Management Network",
+      "nl_query": "Block ICMP echo from Sales Network to Management Network",
+      "expected_ir": {
+        "rule_name": "policy3_sales_ping_mgmt",
+        "description": "Block Sales ping to Management",
+        "intent_text": "Block ICMP echo from Sales Network to Management Network",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "Management Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.20",
+            "prefix": "10.20.0.0/24"
+          }
+        ],
+        "protocol": "icmp",
+        "src_ports": [],
+        "dst_ports": [],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": "echo",
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny icmp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 echo\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc06_policy3_sales_ping_ops",
+      "description": "Policy 3: Block Sales ICMP echo to Operations Network",
+      "nl_query": "ICMP echo requests should be prevented from the sales network to the operations network",
+      "expected_ir": {
+        "rule_name": "policy3_sales_ping_ops",
+        "description": "Block Sales ping to Operations",
+        "intent_text": "ICMP echo requests should be prevented from the sales network to the operations network",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "Operations Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.30",
+            "prefix": "10.30.0.0/24"
+          }
+        ],
+        "protocol": "icmp",
+        "src_ports": [],
+        "dst_ports": [],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": "echo",
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny icmp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 echo\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc07_policy4_ops_ping_sales",
+      "description": "Policy 4: Block Operations ICMP echo to Sales Network (different interface G0/0/1.30)",
+      "nl_query": "We hsould not permit icmp echo requests from the operations network to the sales network",
+      "expected_ir": {
+        "rule_name": "policy4_ops_ping_sales",
+        "description": "Block Operations ping to Sales",
+        "intent_text": "We hsould not permit icmp echo requests from the operations network to the sales network",
+        "sources": [
+          {
+            "entity_name": "Operations Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.30",
+            "prefix": "10.30.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "protocol": "icmp",
+        "src_ports": [],
+        "dst_ports": [],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.30",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": "echo",
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_30_IN\n 10 deny icmp 10.30.0.0 0.0.0.255 10.40.0.0 0.0.0.255 echo\n!\ninterface GigabitEthernet0/0/1.30\n ip access-group ACL_Gi0_0_1_30_IN in"
+    },
+    {
+      "id": "tc08_complex_multi_dest_port",
+      "description": "Complex: Multi-destination, multi-port enumeration (1×2×3=6 ACL lines)",
+      "nl_query": "Block SSH, HTTP, and HTTPS from Sales Network to Management Network and Operations Network",
+      "expected_ir": {
+        "rule_name": "complex_sales_all_tcp",
+        "description": "All Sales TCP restrictions to Management and Operations",
+        "intent_text": "Block SSH, HTTP, and HTTPS from Sales Network to Management Network and Operations Network",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "Management Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.20",
+            "prefix": "10.20.0.0/24"
+          },
+          {
+            "entity_name": "Operations Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.30",
+            "prefix": "10.30.0.0/24"
+          }
+        ],
+        "protocol": "tcp",
+        "src_ports": [],
+        "dst_ports": [
+          { "operator": "eq", "port": 22, "port_high": null },
+          { "operator": "eq", "port": 80, "port_high": null },
+          { "operator": "eq", "port": 443, "port_high": null }
+        ],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": null,
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 22\n 20 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 22\n 30 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 80\n 40 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 80\n 50 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 443\n 60 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 443\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc09_host_to_host_pcb_r2",
+      "description": "Host-to-Host: PC-B SSH to R2 (uses 'host' keyword for /32)",
+      "nl_query": "Block SSH from PC-B to R2",
+      "expected_ir": {
+        "rule_name": "policy1_pcb_ssh_r2",
+        "description": "Block PC-B SSH to R2",
+        "intent_text": "Block SSH from PC-B to R2",
+        "sources": [
+          {
+            "entity_name": "PC-B",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.10/32"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "R2",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1",
+            "prefix": "10.20.0.4/32"
+          }
+        ],
+        "protocol": "tcp",
+        "src_ports": [],
+        "dst_ports": [{ "operator": "eq", "port": 22, "port_high": null }],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": null,
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny tcp host 10.40.0.10 host 10.20.0.4 eq 22\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    },
+    {
+      "id": "tc10_network_to_host_r1_mgmt",
+      "description": "Network-to-Host: Sales to R1 Management Interface IP (10.20.0.1/32)",
+      "nl_query": "Block HTTP from Sales Network to R1 Management Interface",
+      "expected_ir": {
+        "rule_name": "policy2_sales_http_r1_mgmt",
+        "description": "Block Sales HTTP to R1 Management Interface IP",
+        "intent_text": "Block HTTP from Sales Network to R1 Management Interface",
+        "sources": [
+          {
+            "entity_name": "Sales Network",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "prefix": "10.40.0.0/24"
+          }
+        ],
+        "destinations": [
+          {
+            "entity_name": "R1 Management Interface",
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.20",
+            "prefix": "10.20.0.1/32"
+          }
+        ],
+        "protocol": "tcp",
+        "src_ports": [],
+        "dst_ports": [{ "operator": "eq", "port": 80, "port_high": null }],
+        "source_is_any": false,
+        "destination_is_any": false,
+        "action": "deny",
+        "direction": "inbound",
+        "interfaces": [
+          {
+            "router": "R1",
+            "interface": "GigabitEthernet0/0/1.40",
+            "direction": "inbound"
+          }
+        ],
+        "tcp_established": false,
+        "icmp_type": null,
+        "icmp_code": null,
+        "time_range": null,
+        "logging": false,
+        "confidence": 1.0,
+        "ambiguities": []
+      },
+      "expected_cli": "ip access-list extended ACL_Gi0_0_1_40_IN\n 10 deny tcp 10.40.0.0 0.0.0.255 host 10.20.0.1 eq 80\n!\ninterface GigabitEthernet0/0/1.40\n ip access-group ACL_Gi0_0_1_40_IN in"
+    }
+  ]
+}

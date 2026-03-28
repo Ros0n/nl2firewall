@@ -1,0 +1,562 @@
+NL2Firewall Live Test Run: 20260328_161939
+Mode: Full Pipeline with LLM (auto-approve enabled)
+======================================================================
+
+TEST: tc01_policy1_sales_ssh_mgmt
+Description: Policy 1: Block Sales SSH to Management Network
+NL Query: The sales network is not allowed to SSH into the management network
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "Deny_SSH_Sales_to_Management",
+  "description": "Deny SSH from Sales Network to Management Network",
+  "intent_text": "The sales network is not allowed to SSH into the management network",
+  "sources": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "Management Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.20",
+      "prefix": "10.20.0.0/24"
+    }
+  ],
+  "protocol": "tcp",
+  "src_ports": [],
+  "dst_ports": [
+    {
+      "operator": "eq",
+      "port": 22,
+      "port_high": null
+    }
+  ],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": null,
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 100.00%)
+
+TEST: tc02_policy2_sales_http_mgmt
+Description: Policy 2: Block Sales HTTP to Management Network
+NL Query: The sales network should not reach the management network via HTTP
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "Deny_HTTP_Sales_to_Management",
+  "description": "Deny HTTP traffic from Sales Network to Management Network",
+  "intent_text": "The sales network should not reach the management network via HTTP",
+  "sources": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "Management Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.20",
+      "prefix": "10.20.0.0/24"
+    }
+  ],
+  "protocol": "tcp",
+  "src_ports": [],
+  "dst_ports": [
+    {
+      "operator": "eq",
+      "port": 80,
+      "port_high": null
+    }
+  ],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": null,
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 100.00%)
+
+TEST: tc03_policy2_sales_https_mgmt
+Description: Policy 2: Block Sales HTTPS to Management Network
+NL Query: Sales network is not allowed to access the management network via HTTPS
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "deny_https_sales_to_management",
+  "description": "Deny HTTPS traffic from Sales Network to Management Network",
+  "intent_text": "Sales network is not allowed to access the management network via HTTPS",
+  "sources": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "Management Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.20",
+      "prefix": "10.20.0.0/24"
+    }
+  ],
+  "protocol": "tcp",
+  "src_ports": [],
+  "dst_ports": [
+    {
+      "operator": "eq",
+      "port": 443,
+      "port_high": null
+    }
+  ],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": null,
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 100.00%)
+
+TEST: tc04_policy2_sales_web_r1_interfaces
+Description: Policy 2: Block Sales HTTP/HTTPS to R1 Interface IPs
+NL Query: Blcok all web protocols from Sales Network to R1 Operations Interface
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "block_web_sales_to_r1_ops_interface",
+  "description": "Deny HTTP and HTTPS traffic from Sales Network to R1 Operations Interface",
+  "intent_text": "Blcok all web protocols from Sales Network to R1 Operations Interface",
+  "sources": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "R1 Operations Interface",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.30",
+      "prefix": "10.30.0.1/32"
+    }
+  ],
+  "protocol": "tcp",
+  "src_ports": [],
+  "dst_ports": [
+    {
+      "operator": "eq",
+      "port": 80,
+      "port_high": null
+    },
+    {
+      "operator": "eq",
+      "port": 443,
+      "port_high": null
+    }
+  ],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": null,
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 99.78%)
+
+TEST: tc05_policy3_sales_ping_mgmt
+Description: Policy 3: Block Sales ICMP echo to Management Network
+NL Query: Block ICMP echo from Sales Network to Management Network
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "block_icmp_echo_sales_to_management",
+  "description": "Block ICMP echo requests from Sales Network to Management Network",
+  "intent_text": "Block ICMP echo from Sales Network to Management Network",
+  "sources": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "Management Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.20",
+      "prefix": "10.20.0.0/24"
+    }
+  ],
+  "protocol": "icmp",
+  "src_ports": [],
+  "dst_ports": [],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": "echo",
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 100.00%)
+
+TEST: tc06_policy3_sales_ping_ops
+Description: Policy 3: Block Sales ICMP echo to Operations Network
+NL Query: ICMP echo requests should be prevented from the sales network to the operations network
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "Block_ICMP_Echo_Sales_to_Operations",
+  "description": "Deny ICMP echo requests from Sales Network to Operations Network",
+  "intent_text": "ICMP echo requests should be prevented from the sales network to the operations network",
+  "sources": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "Operations Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.30",
+      "prefix": "10.30.0.0/24"
+    }
+  ],
+  "protocol": "icmp",
+  "src_ports": [],
+  "dst_ports": [],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": "echo",
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 100.00%)
+
+TEST: tc07_policy4_ops_ping_sales
+Description: Policy 4: Block Operations ICMP echo to Sales Network (different interface G0/0/1.30)
+NL Query: We hsould not permit icmp echo requests from the operations network to the sales network
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "deny_icmp_echo_operations_to_sales",
+  "description": "Deny ICMP echo requests from Operations Network to Sales Network",
+  "intent_text": "We hsould not permit icmp echo requests from the operations network to the sales network",
+  "sources": [
+    {
+      "entity_name": "Operations Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.30",
+      "prefix": "10.30.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "protocol": "icmp",
+  "src_ports": [],
+  "dst_ports": [],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.30",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": "echo",
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 0.9,
+  "ambiguities": [
+    "Typo 'hsould' interpreted as 'should' — confirm if intended."
+  ],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 100.00%)
+
+TEST: tc08_complex_multi_dest_port
+Description: Complex: Multi-destination, multi-port enumeration (1×2×3=6 ACL lines)
+NL Query: Block SSH, HTTP, and HTTPS from Sales Network to Management Network and Operations Network
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "block_ssh_http_https_sales_to_mgmt_ops",
+  "description": "Deny SSH, HTTP, and HTTPS traffic from Sales Network to Management and Operations Networks",
+  "intent_text": "Block SSH, HTTP, and HTTPS from Sales Network to Management Network and Operations Network",
+  "sources": [
+    {
+      "entity_name": "Sales Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.0/24"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "Management Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.20",
+      "prefix": "10.20.0.0/24"
+    },
+    {
+      "entity_name": "Operations Network",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.30",
+      "prefix": "10.30.0.0/24"
+    }
+  ],
+  "protocol": "tcp",
+  "src_ports": [],
+  "dst_ports": [
+    {
+      "operator": "eq",
+      "port": 22,
+      "port_high": null
+    },
+    {
+      "operator": "eq",
+      "port": 80,
+      "port_high": null
+    },
+    {
+      "operator": "eq",
+      "port": 443,
+      "port_high": null
+    }
+  ],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": null,
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: FAIL (Similarity: 74.52%)
+EXPECTED CLI:
+ip access-list extended ACL_Gi0_0_1_40_IN
+ 10 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 22
+ 20 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 22
+ 30 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 80
+ 40 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 80
+ 50 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 443
+ 60 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 443
+!
+interface GigabitEthernet0/0/1.40
+ ip access-group ACL_Gi0_0_1_40_IN in
+
+ACTUAL CLI:
+ip access-list extended ACL_Gi0_0_1_40_IN
+ 10 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 22
+ 20 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 80
+ 30 deny tcp 10.40.0.0 0.0.0.255 10.20.0.0 0.0.0.255 eq 443
+ 40 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 22
+ 50 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 80
+ 60 deny tcp 10.40.0.0 0.0.0.255 10.30.0.0 0.0.0.255 eq 443
+!
+interface GigabitEthernet0/0/1.40
+ ip access-group ACL_Gi0_0_1_40_IN in
+
+TEST: tc09_host_to_host_pcb_r2
+Description: Host-to-Host: PC-B SSH to R2 (uses 'host' keyword for /32)
+NL Query: Block SSH from PC-B to R2
+----------------------------------------------------------------------
+GENERATED IR:
+{
+  "rule_name": "block_ssh_pc_b_to_r2",
+  "description": "Deny SSH traffic from PC-B to R2",
+  "intent_text": "Block SSH from PC-B to R2",
+  "sources": [
+    {
+      "entity_name": "PC-B",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "prefix": "10.40.0.10/32"
+    }
+  ],
+  "destinations": [
+    {
+      "entity_name": "R2",
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1",
+      "prefix": "10.20.0.4/32"
+    }
+  ],
+  "protocol": "tcp",
+  "src_ports": [],
+  "dst_ports": [
+    {
+      "operator": "eq",
+      "port": 22,
+      "port_high": null
+    }
+  ],
+  "source_is_any": false,
+  "destination_is_any": false,
+  "action": "deny",
+  "direction": "inbound",
+  "interfaces": [
+    {
+      "router": "R1",
+      "interface": "GigabitEthernet0/0/1.40",
+      "direction": "inbound"
+    }
+  ],
+  "tcp_established": false,
+  "icmp_type": null,
+  "icmp_code": null,
+  "time_range": null,
+  "logging": false,
+  "confidence": 1.0,
+  "ambiguities": [],
+  "incomplete": false
+}
+
+STATUS: PASS (Similarity: 100.00%)
+
+TEST: tc10_network_to_host_r1_mgmt
+Description: Network-to-Host: Sales to R1 Management Interface IP (10.20.0.1/32)
+NL Query: Block HTTP from Sales Network to R1 Management Interface
+----------------------------------------------------------------------
+STATUS: ERROR
+Reason: Pipeline failed: LLM error: Failed to get valid JSON from Groq after 3 attempts. Last error: Error code: 413 - {'error': {'message': 'Request too large for model `openai/gpt-oss-120b` in organization `org_01km3f31fve51s8vpxr1ws8r3t` service tier `on_demand` on tokens per minute (TPM): Limit 8000, Requested 8066, please reduce your message size and try again. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}
+
+======================================================================
+SUMMARY
+======================================================================
+Total: 10
+Passed: 8
+Failed: 2
+
+Failed Cases:
+  - tc08_complex_multi_dest_port
+  - tc10_network_to_host_r1_mgmt
