@@ -2,10 +2,8 @@ network_name: "CCNA Extended ACL Lab"
 description: "Cisco Lab 5.5.2 — Router-on-a-stick topology. R1 does inter-VLAN routing via subinterfaces on G0/0/1 connected to S1 trunk. Three VLANs: Management(20), Operations(30), Sales(40)."
 
 entities:
-
   # ── VLAN Network Segments ────────────────────────────────────────────────────
   # R1 is the gateway for all VLANs via subinterfaces on G0/0/1 (router-on-a-stick).
- 
 
   Sales Network:
     gateways:
@@ -90,8 +88,6 @@ entities:
 
   # ── R2 (/32) ─────────────────────────────────────────────────────────────────
   # R2 is connected to VLAN 20 (Management Network) via G0/0/1.
-  # IP: 10.20.0.4 — used in lab for ACL testing (SSH target in Policy 1 test).
-  # Gateway = R2 itself since R2 is a router with its own interface.
 
   R2:
     gateways:
@@ -102,10 +98,9 @@ entities:
   # ── Internet (simulated) ─────────────────────────────────────────────────────
   # R1 Loopback1 simulates an internet connection for ACL testing.
   # Used when intent says "internet", "external", "outside world".
-  # Internet = the full /24 subnet. R1 Loopback above = the specific host /32.
 
   Internet:
     gateways:
       - router: "R1"
         interface: "Loopback1"
-        prefix: "172.16.1.0/24"
+        prefix: "172.16.1.1/32"

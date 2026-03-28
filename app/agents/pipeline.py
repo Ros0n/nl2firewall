@@ -233,7 +233,6 @@ async def build_rule(state: PipelineState) -> dict:
                         router=matched_gw.router,
                         interface=matched_gw.interface,
                         prefix=matched_gw.prefix,
-                        zone=ep.zone,
                     )
                 )
             else:
@@ -262,7 +261,6 @@ async def build_rule(state: PipelineState) -> dict:
                                 router=gw.router,
                                 interface=gw.interface,
                                 direction=iface.direction,
-                                zone=iface.zone,
                             )
                         )
                         matched = True

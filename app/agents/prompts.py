@@ -31,8 +31,7 @@ IR_JSON_SCHEMA = """{
       "entity_name": "<exact name from SNMT — or 'Not Found' if unresolvable>",
       "router":      "<router from SNMT>",
       "interface":   "<interface from SNMT>",
-      "prefix":      "<CIDR from SNMT>",
-      "zone":        null
+      "prefix":      "<CIDR from SNMT>"
     }
   ],
   "destinations": [
@@ -40,8 +39,7 @@ IR_JSON_SCHEMA = """{
       "entity_name": "<exact name from SNMT — or 'Not Found' if unresolvable>",
       "router":      "<router from SNMT>",
       "interface":   "<interface from SNMT>",
-      "prefix":      "<CIDR from SNMT>",
-      "zone":        null
+      "prefix":      "<CIDR from SNMT>"
     }
   ],
 
@@ -66,8 +64,7 @@ IR_JSON_SCHEMA = """{
     {
       "router":    "<router name>",
       "interface": "<interface name>",
-      "direction": "inbound" | "outbound",
-      "zone":      null
+      "direction": "inbound" | "outbound"
     }
   ],
 
@@ -140,7 +137,7 @@ STEP 2 — Resolve SOURCE from SNMT
          Which router and interface does this subnet connect to?"
 
   NOT FOUND — if entity cannot be resolved after all attempts:
-    → add {"entity_name": "Not Found", "router": "", "interface": "", "prefix": "", "zone": null}
+    → add {"entity_name": "Not Found", "router": "", "interface": "", "prefix": ""}
     → set incomplete=true
     → add to ambiguities[]: "Could not resolve '[original text]' to any entity in the network context.
       Please clarify which network segment you mean."
@@ -415,8 +412,8 @@ Step 4: "web" = HTTP(80) + HTTPS(443) → two dst_ports entries.
   "rule_name": "Block_Web_GuestWifi_to_InternalServers",
   "description": "Deny HTTP and HTTPS from Guest Wifi to Internal Servers",
   "intent_text": "Deny web access from Guest Wifi to Internal Servers",
-  "sources": [{"entity_name":"Guest Wifi","router":"RouterY","interface":"Ethernet3/0","prefix":"172.16.50.0/24","zone":null}],
-  "destinations": [{"entity_name":"Internal Servers","router":"RouterY","interface":"Ethernet1/0","prefix":"10.10.0.0/24","zone":null}],
+  "sources": [{"entity_name":"Guest Wifi","router":"RouterY","interface":"Ethernet3/0","prefix":"172.16.50.0/24"}],
+  "destinations": [{"entity_name":"Internal Servers","router":"RouterY","interface":"Ethernet1/0","prefix":"10.10.0.0/24"}],
   "source_is_any":false,"destination_is_any":false,
   "protocol":"tcp","src_ports":[],
   "dst_ports":[
@@ -424,7 +421,7 @@ Step 4: "web" = HTTP(80) + HTTPS(443) → two dst_ports entries.
     {"operator":"eq","port":443,"port_high":null}
   ],
   "action":"deny","direction":"inbound",
-  "interfaces":[{"router":"RouterY","interface":"Ethernet3/0","direction":"inbound","zone":null}],
+  "interfaces":[{"router":"RouterY","interface":"Ethernet3/0","direction":"inbound"}],
   "tcp_established":false,"icmp_type":null,"icmp_code":null,"time_range":null,
   "logging":false,"confidence":1.0,"ambiguities":[],"incomplete":false
 }
@@ -444,10 +441,10 @@ Step 4b: EXCEPTION DETECTED — "but Sales can access Loopback".
   "rule_name": "Block_Web_Sales_to_R1_Interfaces",
   "description": "Deny HTTP and HTTPS from Sales to R1 non-Loopback interfaces",
   "intent_text": "Block Sales from accessing all R1 interfaces using HTTP and HTTPS, but Sales can access the Loopback interface",
-  "sources": [{"entity_name":"Dept-A","router":"RouterX","interface":"Ethernet1/0","prefix":"192.168.10.0/24","zone":null}],
+  "sources": [{"entity_name":"Dept-A","router":"RouterX","interface":"Ethernet1/0","prefix":"192.168.10.0/24"}],
   "destinations": [
-    {"entity_name":"Gateway Eth1","router":"RouterX","interface":"Ethernet1/0","prefix":"10.0.0.1/32","zone":null},
-    {"entity_name":"Gateway Eth2","router":"RouterX","interface":"Ethernet2/0","prefix":"10.0.1.1/32","zone":null}
+    {"entity_name":"Gateway Eth1","router":"RouterX","interface":"Ethernet1/0","prefix":"10.0.0.1/32"},
+    {"entity_name":"Gateway Eth2","router":"RouterX","interface":"Ethernet2/0","prefix":"10.0.1.1/32"}
   ],
   "source_is_any":false,"destination_is_any":false,
   "protocol":"tcp","src_ports":[],
@@ -456,7 +453,7 @@ Step 4b: EXCEPTION DETECTED — "but Sales can access Loopback".
     {"operator":"eq","port":443,"port_high":null}
   ],
   "action":"deny","direction":"inbound",
-  "interfaces":[{"router":"RouterX","interface":"Ethernet1/0","direction":"inbound","zone":null}],
+  "interfaces":[{"router":"RouterX","interface":"Ethernet1/0","direction":"inbound"}],
   "tcp_established":false,"icmp_type":null,"icmp_code":null,"time_range":null,
   "logging":false,"confidence":0.8,
   "ambiguities":[
@@ -477,12 +474,12 @@ Step 3: "the database server" — look in SNMT. No entity with 'database' or 'se
   "rule_name": "Block_GuestWifi_to_DatabaseServer",
   "description": "Deny connections from Guest Wifi to the database server (destination unresolved)",
   "intent_text": "Block the database server from accepting connections from Guest Wifi",
-  "sources": [{"entity_name":"Guest Wifi","router":"RouterY","interface":"Ethernet3/0","prefix":"172.16.50.0/24","zone":null}],
-  "destinations": [{"entity_name":"Not Found","router":"","interface":"","prefix":"","zone":null}],
+  "sources": [{"entity_name":"Guest Wifi","router":"RouterY","interface":"Ethernet3/0","prefix":"172.16.50.0/24"}],
+  "destinations": [{"entity_name":"Not Found","router":"","interface":"","prefix":""}],
   "source_is_any":false,"destination_is_any":false,
   "protocol":"ip","src_ports":[],"dst_ports":[],
   "action":"deny","direction":"inbound",
-  "interfaces":[{"router":"RouterY","interface":"Ethernet3/0","direction":"inbound","zone":null}],
+  "interfaces":[{"router":"RouterY","interface":"Ethernet3/0","direction":"inbound"}],
   "tcp_established":false,"icmp_type":null,"icmp_code":null,"time_range":null,
   "logging":false,"confidence":0.4,
   "ambiguities":[
@@ -502,13 +499,13 @@ Step 6: time_range present. logging=true.
   "rule_name": "Block_Log_SocialMedia_Office_BusinessHours",
   "description": "Deny and log social media (tcp/443) from Office during business hours",
   "intent_text": "Block and log social media traffic from Office during business hours on weekdays",
-  "sources": [{"entity_name":"Office Network","router":"RouterX","interface":"Ethernet1/0","prefix":"10.1.0.0/24","zone":null}],
-  "destinations": [{"entity_name":"Internet","router":"RouterX","interface":"Ethernet0/0","prefix":"0.0.0.0/0","zone":null}],
+  "sources": [{"entity_name":"Office Network","router":"RouterX","interface":"Ethernet1/0","prefix":"10.1.0.0/24"}],
+  "destinations": [{"entity_name":"Internet","router":"RouterX","interface":"Ethernet0/0","prefix":"0.0.0.0/0"}],
   "source_is_any":false,"destination_is_any":false,
   "protocol":"tcp","src_ports":[],
   "dst_ports":[{"operator":"eq","port":443,"port_high":null}],
   "action":"deny","direction":"inbound",
-  "interfaces":[{"router":"RouterX","interface":"Ethernet1/0","direction":"inbound","zone":null}],
+  "interfaces":[{"router":"RouterX","interface":"Ethernet1/0","direction":"inbound"}],
   "tcp_established":false,"icmp_type":null,"icmp_code":null,
   "time_range":{"name":"BUSINESS_HOURS","type":"periodic","days":["weekdays"],"time_start":"08:00","time_end":"17:00"},
   "logging":true,"confidence":0.9,
@@ -528,12 +525,12 @@ Step 6: tcp_established=true (return traffic only).
   "rule_name": "Permit_Established_Web_Return_External",
   "description": "Permit only established TCP return traffic inbound on external interface",
   "intent_text": "Allow return traffic for web browsing initiated by Internal Network — block new inbound connections from outside",
-  "sources": [{"entity_name":"Internet","router":"RouterX","interface":"Ethernet0/0","prefix":"0.0.0.0/0","zone":null}],
-  "destinations": [{"entity_name":"Internal Network","router":"RouterX","interface":"Ethernet1/0","prefix":"10.0.0.0/8","zone":null}],
+  "sources": [{"entity_name":"Internet","router":"RouterX","interface":"Ethernet0/0","prefix":"0.0.0.0/0"}],
+  "destinations": [{"entity_name":"Internal Network","router":"RouterX","interface":"Ethernet1/0","prefix":"10.0.0.0/8"}],
   "source_is_any":false,"destination_is_any":false,
   "protocol":"tcp","src_ports":[],"dst_ports":[],
   "action":"permit","direction":"inbound",
-  "interfaces":[{"router":"RouterX","interface":"Ethernet0/0","direction":"inbound","zone":null}],
+  "interfaces":[{"router":"RouterX","interface":"Ethernet0/0","direction":"inbound"}],
   "tcp_established":true,"icmp_type":null,"icmp_code":null,"time_range":null,
   "logging":false,"confidence":0.9,
   "ambiguities":["Split into two rules: (1) permit outbound from Internal to Internet, (2) permit established return — this is rule 2."],

@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Shield } from 'lucide-react'
-import { usePipeline } from './hooks/usePipeline.js'
-import { getNetworkContext } from './api/client.js'
-import ChatTurn from './components/ChatTurn.jsx'
-import ChatInput from './components/ChatInput.jsx'
+import React, { useEffect, useRef, useState } from "react";
+import { Shield } from "lucide-react";
+import { usePipeline } from "./hooks/usePipeline.js";
+import { getNetworkContext } from "./api/client.js";
+import ChatTurn from "./components/ChatTurn.jsx";
+import ChatInput from "./components/ChatInput.jsx";
 
 export default function App() {
   const {
@@ -14,36 +14,41 @@ export default function App() {
     submit,
     approve,
     sendFeedback,
-  } = usePipeline()
+  } = usePipeline();
 
-  const bottomRef = useRef(null)
-  const [backendOk, setBackendOk] = useState(true)
+  const bottomRef = useRef(null);
+  const [backendOk, setBackendOk] = useState(true);
 
   // ── Check if a network context is already loaded on the backend ─────────────
   useEffect(() => {
     getNetworkContext()
-      .then(data => {
+      .then((data) => {
         if (data.loaded) {
-          setNetworkContext({ network_name: data.network_name, entity_count: data.entity_count })
+          setNetworkContext({
+            network_name: data.network_name,
+            entity_count: data.entity_count,
+          });
         }
       })
-      .catch(() => setBackendOk(false))
-  }, [setNetworkContext])
+      .catch(() => setBackendOk(false));
+  }, [setNetworkContext]);
 
   // ── Scroll to bottom whenever sessions change ────────────────────────────────
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [sessions])
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [sessions]);
 
-  const networkLoaded = !!networkContext
+  const networkLoaded = !!networkContext;
 
   const handleUploaded = (data) => {
-    setNetworkContext({ network_name: data.network_name, entity_count: data.entity_count })
-  }
+    setNetworkContext({
+      network_name: data.network_name,
+      entity_count: data.entity_count,
+    });
+  };
 
   return (
     <div className="app">
-
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <header className="topbar">
         <div className="topbar__brand">
@@ -79,32 +84,8 @@ export default function App() {
             <p className="chat-empty__sub">
               {networkLoaded
                 ? `Network context loaded: ${networkContext.network_name}. Type an intent below to get started.`
-                : 'Upload a network context file using the 📎 button below, then type your intent.'}
+                : "Upload a network context file using the 📎 button below, then type your intent."}
             </p>
-            <div className="chat-empty__examples">
-              <span className="chat-empty__example-label">Try an example:</span>
-              <button
-                className="chat-empty__example-chip"
-                disabled={!networkLoaded || isSubmitting}
-                onClick={() => submit('Block SSH from Sales Network to Management Network')}
-              >
-                Block SSH from Sales Network to Management Network
-              </button>
-              <button
-                className="chat-empty__example-chip"
-                disabled={!networkLoaded || isSubmitting}
-                onClick={() => submit('Allow ICMP echo from Operations Network to any destination')}
-              >
-                Allow ICMP echo from Operations Network to any destination
-              </button>
-              <button
-                className="chat-empty__example-chip"
-                disabled={!networkLoaded || isSubmitting}
-                onClick={() => submit('Deny all HTTP and HTTPS traffic from Sales Network to R1 interfaces during business hours')}
-              >
-                Deny HTTP and HTTPS from Sales Network to R1 during business hours
-              </button>
-            </div>
           </div>
         ) : (
           <div className="chat-messages">
@@ -133,7 +114,6 @@ export default function App() {
           />
         </div>
       </footer>
-
     </div>
-  )
+  );
 }
