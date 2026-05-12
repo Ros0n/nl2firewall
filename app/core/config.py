@@ -1,13 +1,15 @@
 """App configuration — loads from .env file."""
 
 from __future__ import annotations
+
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     # Groq
-    groq_api_key: str #required from .env no default
+    groq_api_key: str  # required from .env no default
     groq_model: str = "openai/gpt-oss-120b"
 
     # Batfish

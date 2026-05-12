@@ -14,10 +14,10 @@ Key choices:
 
 from __future__ import annotations
 
-import json
-import re
 import asyncio
+import json
 import logging
+import re
 from typing import Any
 
 from groq import AsyncGroq
@@ -59,7 +59,7 @@ class GroqClient:
         """
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_message},
+            {"role": "user", "content": user_message},
         ]
 
         last_error: Exception | None = None
@@ -69,7 +69,7 @@ class GroqClient:
                 response = await self._client.chat.completions.create(
                     model=self._model,
                     messages=messages,
-                    temperature=0,            # deterministic for ACL generation
+                    temperature=0,  # deterministic for ACL generation
                     max_completion_tokens=4096,
                     top_p=1,
                     reasoning_effort="medium",  # CoT reasoning, balanced speed
@@ -79,30 +79,39 @@ class GroqClient:
                 )
 
                 raw_text = response.choices[0].message.content or ""
-                logger.debug(f"Groq raw response (attempt {attempt+1}):\n{raw_text[:400]}")
+                logger.debug(
+                    f"Groq raw response (attempt {attempt + 1}):\n{raw_text[:400]}"
+                )
 
                 parsed = self._extract_json(raw_text)
                 return parsed
 
             except (json.JSONDecodeError, ValueError) as e:
                 last_error = e
-                logger.warning(f"JSON parse failed on attempt {attempt+1}: {e}")
+                logger.warning(f"JSON parse failed on attempt {attempt + 1}: {e}")
                 if attempt < max_retries - 1:
                     # Add correction nudge and retry
-                    messages.append({"role": "assistant", "content": raw_text if 'raw_text' in dir() else ""})
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            "Your response was not valid JSON. "
-                            "Output ONLY a JSON object starting with { and ending with }. "
-                            "No markdown, no backticks, no explanation text."
-                        )
-                    })
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": raw_text if "raw_text" in dir() else "",
+                        }
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Your response was not valid JSON. "
+                                "Output ONLY a JSON object starting with { and ending with }. "
+                                "No markdown, no backticks, no explanation text."
+                            ),
+                        }
+                    )
                     await asyncio.sleep(0.5 * (attempt + 1))
 
             except Exception as e:
                 last_error = e
-                logger.warning(f"API call failed on attempt {attempt+1}: {e}")
+                logger.warning(f"API call failed on attempt {attempt + 1}: {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(1.0 * (attempt + 1))
 
@@ -125,7 +134,7 @@ class GroqClient:
             model=self._model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_message},
+                {"role": "user", "content": user_message},
             ],
             temperature=temperature,
             max_completion_tokens=1024,
@@ -163,7 +172,8 @@ class GroqClient:
 
         depth, end = 0, -1
         for i, ch in enumerate(text[start:], start):
-            if ch == "{": depth += 1
+            if ch == "{":
+                depth += 1
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
